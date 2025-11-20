@@ -1,0 +1,6 @@
+# Strava API keys
+config.yaml
+.env
+*.env
+*.key
+*.secret
