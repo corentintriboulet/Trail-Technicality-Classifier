@@ -1,0 +1,78 @@
+{
+  "segment_ids": [
+    22990358,
+    24329234,
+    24095776,
+    5321310,
+    3624193,
+    23364395,
+    23259830,
+    26244555,
+    21977568,
+    13695071,
+    26244737,
+    3896321
+  ],
+  "segments": [
+    {
+      "id": 22990358,
+      "name": "Faux plat pond Mulat",
+      "checked_at": "2025-01-15 14:30:00"
+    },
+    {
+      "id": 24329234,
+      "name": "Debout Sur les P\u00e9dales",
+      "checked_at": "2025-11-21 11:07:51"
+    },
+    {
+      "id": 24095776,
+      "name": "Demi-tour drift\u00e9 chauffe la gomme !",
+      "checked_at": "2025-11-21 11:08:03"
+    },
+    {
+      "id": 5321310,
+      "name": "BAS3 Raid des Sables",
+      "checked_at": "2025-11-21 11:08:14"
+    },
+    {
+      "id": 3624193,
+      "name": "Chemin Juliette Dodu Climb",
+      "checked_at": "2025-11-21 11:08:26"
+    },
+    {
+      "id": 23364395,
+      "name": "Pont RSE (SP-SL)",
+      "checked_at": "2025-11-21 11:08:35"
+    },
+    {
+      "id": 23259830,
+      "name": "Ravine du Gol-Avenue Pasteur",
+      "checked_at": "2025-11-21 11:08:48"
+    },
+    {
+      "id": 26244555,
+      "name": "Monter derniere coul\u00e9e 2007",
+      "checked_at": "2025-11-21 11:08:58"
+    },
+    {
+      "id": 21977568,
+      "name": "Mont\u00e9 Pointe au Sel",
+      "checked_at": "2025-11-21 11:09:11"
+    },
+    {
+      "id": 13695071,
+      "name": "cote les oranger",
+      "checked_at": "2025-11-21 11:11:03"
+    },
+    {
+      "id": 26244737,
+      "name": "Faux plat Bonne Esperance ",
+      "checked_at": "2025-11-21 11:11:52"
+    },
+    {
+      "id": 3896321,
+      "name": "faux plat station St Gilles",
+      "checked_at": "2025-11-21 11:13:45"
+    }
+  ]
+}
