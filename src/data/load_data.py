@@ -191,20 +191,27 @@ class StravaSegmentExtractor:
         return None
     
     @staticmethod
-    def time_to_seconds(time_str):
-        """Convert time string to seconds. Handles: '45', '5:24', '1:23:45'"""
+    def time_to_seconds(self, time_str):
+        """Convert time string to seconds. Handles formats including Strava weird ones."""
         try:
-            time_str = time_str.strip()
+            time_str = time_str.strip().lower()
+
+            # Case: "9seconds", "9 seconds", "9s", "9 sec", etc.
+            if "sec" in time_str or time_str.endswith("s"):
+                digits = ''.join(ch for ch in time_str if ch.isdigit())
+                return int(digits)
+
             parts = time_str.split(':')
-            
-            if len(parts) == 1:  # Format: "45" (secondes seulement)
+
+            if len(parts) == 1:  # "45"
                 return int(parts[0])
-            elif len(parts) == 2:  # Format: "5:24" (MM:SS)
+            elif len(parts) == 2:  # "5:24"
                 return int(parts[0]) * 60 + int(parts[1])
-            elif len(parts) == 3:  # Format: "1:23:45" (H:MM:SS)
+            elif len(parts) == 3:  # "1:23:45"
                 return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
             else:
                 return None
+
         except (ValueError, AttributeError):
             return None
     
@@ -309,7 +316,7 @@ class StravaSegmentExtractor:
         
         all_segments = []
         segment_ids = set()
-        grid_size = 5
+        grid_size = 7
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
