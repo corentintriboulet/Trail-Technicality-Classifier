@@ -1,8 +1,192 @@
 {
   "segment_ids": [
-
-  ], 
+    22990358,
+    24329234,
+    24095776,
+    5321310,
+    3624193,
+    23364395,
+    23259830,
+    26244555,
+    21977568,
+    13695071,
+    26244737,
+    3896321,
+    7337448,
+    4365267,
+    19411268,
+    21795226,
+    4904950,
+    1454003,
+    15890269,
+    11414645,
+    5244998,
+    14904081,
+    27128653,
+    17848934,
+    19834495,
+    25335968,
+    18720584,
+    14873476,
+    13891414,
+    11144469,
+    14515224
+  ],
   "segments": [
-
+    {
+      "id": 22990358,
+      "name": "Faux plat pond Mulat",
+      "checked_at": "2025-11-25 16:58:52"
+    },
+    {
+      "id": 24329234,
+      "name": "Debout Sur les P\u00e9dales",
+      "checked_at": "2025-11-25 16:59:03"
+    },
+    {
+      "id": 24095776,
+      "name": "Demi-tour drift\u00e9 chauffe la gomme !",
+      "checked_at": "2025-11-25 16:59:15"
+    },
+    {
+      "id": 5321310,
+      "name": "BAS3 Raid des Sables",
+      "checked_at": "2025-11-25 16:59:25"
+    },
+    {
+      "id": 3624193,
+      "name": "Chemin Juliette Dodu Climb",
+      "checked_at": "2025-11-25 16:59:37"
+    },
+    {
+      "id": 23364395,
+      "name": "Pont RSE (SP-SL)",
+      "checked_at": "2025-11-25 16:59:48"
+    },
+    {
+      "id": 23259830,
+      "name": "Ravine du Gol-Avenue Pasteur",
+      "checked_at": "2025-11-25 16:59:58"
+    },
+    {
+      "id": 26244555,
+      "name": "Monter derniere coul\u00e9e 2007",
+      "checked_at": "2025-11-25 17:00:09"
+    },
+    {
+      "id": 21977568,
+      "name": "Mont\u00e9 Pointe au Sel",
+      "checked_at": "2025-11-25 17:00:19"
+    },
+    {
+      "id": 13695071,
+      "name": "cote les oranger",
+      "checked_at": "2025-11-25 17:00:33"
+    },
+    {
+      "id": 26244737,
+      "name": "Faux plat Bonne Esperance ",
+      "checked_at": "2025-11-25 17:00:45"
+    },
+    {
+      "id": 3896321,
+      "name": "faux plat station St Gilles",
+      "checked_at": "2025-11-25 17:00:56"
+    },
+    {
+      "id": 7337448,
+      "name": "Petit coup de rein",
+      "checked_at": "2025-11-25 17:01:07"
+    },
+    {
+      "id": 4365267,
+      "name": "St Benoit Mont\u00e9e 1",
+      "checked_at": "2025-11-25 17:01:18"
+    },
+    {
+      "id": 19411268,
+      "name": "Kom 4 voie st andr\u00e9",
+      "checked_at": "2025-11-25 17:01:30"
+    },
+    {
+      "id": 21795226,
+      "name": "Final Clm Tour 2019",
+      "checked_at": "2025-11-25 17:01:43"
+    },
+    {
+      "id": 4904950,
+      "name": "Rue Paul Verlaine",
+      "checked_at": "2025-11-25 17:01:54"
+    },
+    {
+      "id": 1454003,
+      "name": "Route Du Littoral Climb",
+      "checked_at": "2025-11-25 17:02:07"
+    },
+    {
+      "id": 15890269,
+      "name": "SENTIER THEO 1",
+      "checked_at": "2025-11-25 17:02:19"
+    },
+    {
+      "id": 11414645,
+      "name": "Rav. des Ch\u00e8vres N2002 Est-Ouest",
+      "checked_at": "2025-11-25 17:02:31"
+    },
+    {
+      "id": 5244998,
+      "name": "Sainte-Suzanne centre ville",
+      "checked_at": "2025-11-25 17:02:42"
+    },
+    {
+      "id": 14904081,
+      "name": "Gillot",
+      "checked_at": "2025-11-25 17:02:54"
+    },
+    {
+      "id": 27128653,
+      "name": "Sentier Beau Rivage",
+      "checked_at": "2025-11-25 17:03:07"
+    },
+    {
+      "id": 17848934,
+      "name": "Le petit chauffe cuisse",
+      "checked_at": "2025-11-25 17:03:17"
+    },
+    {
+      "id": 19834495,
+      "name": "Cote gravier Antenne",
+      "checked_at": "2025-11-25 17:03:29"
+    },
+    {
+      "id": 25335968,
+      "name": "Pente Para 2",
+      "checked_at": "2025-11-25 17:03:40"
+    },
+    {
+      "id": 18720584,
+      "name": "piste chatoire",
+      "checked_at": "2025-11-25 17:03:52"
+    },
+    {
+      "id": 14873476,
+      "name": "Grande Anse - 2",
+      "checked_at": "2025-11-25 17:04:04"
+    },
+    {
+      "id": 13891414,
+      "name": "Sprint trou d'eau",
+      "checked_at": "2025-11-25 17:04:18"
+    },
+    {
+      "id": 11144469,
+      "name": "vers nez de boeuf",
+      "checked_at": "2025-11-25 17:04:29"
+    },
+    {
+      "id": 14515224,
+      "name": "400m sarda",
+      "checked_at": "2025-11-25 17:04:40"
+    }
   ]
 }

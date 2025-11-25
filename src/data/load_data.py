@@ -14,7 +14,6 @@ class RateLimitException(Exception):
     """Raised when Strava API rate limit is hit"""
     pass
 
-
 def refresh_strava_token(config_path: Path) -> str:
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -52,7 +51,6 @@ def get_valid_token(config_path: Path) -> str:
     )
     
     if response.status_code == 200:
-        print("✓ Token is valid")
         return access_token
     elif response.status_code == 401:
         print("Token expired, refreshing...")
@@ -60,15 +58,55 @@ def get_valid_token(config_path: Path) -> str:
     print(f"✗ Unknown error: {response.status_code}")
     return None
 
+def load_config(config_path):
+    """
+    Load configuration from YAML file
+    
+    Returns:
+        dict: Configuration dictionary with strava and agentql keys
+    """
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    return config
+
+def setup_agentql(api_key):
+    """
+    Configure AgentQL with API key
+    
+    Args:
+        api_key (str): AgentQL API key from config
+    """
+    agentql.configure(api_key=api_key)
+    print("✓ AgentQL configured")
+
+async def run_extraction(extractor, max_segments):
+    """
+    Run the segment extraction process
+    
+    Args:
+        extractor: StravaSegmentExtractor instance
+        max_segments (int): Maximum number of segments to extract
+    
+    Returns:
+        list: Extracted segment data
+    """
+    nb_existing = extractor.number_of_processed_segments()
+    print(f"Already processed segments: {nb_existing}")
+    
+    # Extract new segments
+    data = await extractor.extract_all_data_async(max_segments=max_segments)
+    
+    # Save data
+    extractor.save_data(data)
+    
+    return data
 
 class StravaSegmentExtractor:
-    def __init__(self, access_token, email, password):
-        self.access_token = access_token
-        self.email = email
-        self.password = password
-        self.logged_in = False
+    def __init__(self, strava_access_token, agentql_api_key):
+        self.access_token = strava_access_token
+        self.agentql_api_key = agentql_api_key
         self.base_url = "https://www.strava.com/api/v3"
-        self.headers = {"Authorization": f"Bearer {access_token}"}
+        self.headers = {"Authorization": f"Bearer {strava_access_token}"}
         self.project_root = Path(__file__).resolve().parents[2]
         self.raw_folder = self.project_root / "data" / "raw"
         os.makedirs(self.raw_folder, exist_ok=True)
@@ -154,27 +192,26 @@ class StravaSegmentExtractor:
     
     @staticmethod
     def time_to_seconds(time_str):
+        """Convert time string to seconds. Handles: '45', '5:24', '1:23:45'"""
         try:
-            parts = time_str.strip().split(':')
-            if len(parts) == 2:
+            time_str = time_str.strip()
+            parts = time_str.split(':')
+            
+            if len(parts) == 1:  # Format: "45" (secondes seulement)
+                return int(parts[0])
+            elif len(parts) == 2:  # Format: "5:24" (MM:SS)
                 return int(parts[0]) * 60 + int(parts[1])
-            elif len(parts) == 3:
+            elif len(parts) == 3:  # Format: "1:23:45" (H:MM:SS)
                 return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-        except:
-            pass
-        return None
+            else:
+                return None
+        except (ValueError, AttributeError):
+            return None
     
     async def init_browser(self):
         if not self.browser:
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=False)
-            
-            # Load session if it exists, else create new context
-            storage_file = Path("strava_session.json")
-            self.context = await self.browser.new_context(
-                storage_state=storage_file if storage_file.exists() else None
-            )
-            self.page = await self.context.new_page()
+            self.browser = await self.playwright.chromium.launch(headless=True)
     
     async def close_browser(self):
         if self.browser:
@@ -183,76 +220,30 @@ class StravaSegmentExtractor:
             self.browser = None
             self.playwright = None
     
-    async def login_to_strava(self, page):
-        """Login to Strava to access leaderboards with robust element handling"""
-        try:
-            await page.goto("https://www.strava.com/login", timeout=30000)
-            await page.wait_for_load_state("networkidle")
-
-            email_selector = 'input[name="email"], input#email, input#mobile-email'
-            pass_selector  = 'input[name="password"], input#password, input#mobile-password'
-            submit_selector = 'button[type="submit"], button[data-testid="login-button"]'
-
-            # Email
-            email_input = page.locator(email_selector).first
-            await email_input.wait_for(state="visible", timeout=15000)
-            await email_input.fill(self.email)
-
-            # Password
-            pass_input = page.locator(pass_selector).first
-            await pass_input.wait_for(state="visible", timeout=15000)
-            await pass_input.fill(self.password)
-
-            # Submit
-            submit_btn = page.locator(submit_selector).first
-            await submit_btn.wait_for(state="visible", timeout=15000)
-            await submit_btn.click()
-
-            # Attendre la redirection / chargement du dashboard
-            await page.wait_for_load_state("networkidle", timeout=30000)
-
-            print("✓ Logged into Strava")
-
-            # Sauvegarder les cookies/session pour éviter le login à chaque fois
-            await page.context.storage_state(path="strava_session.json")
-
-        except Exception as e:
-            print(f"Login failed: {e}")
-            await page.screenshot(path=str(self.raw_folder / "login_error.png"))
-            raise
-
-
     async def scrape_leaderboard_times(self, segment_id):
-        """Scrape using the persistent browser session"""
+        """Scrape leaderboard using shared browser"""
         segment_url = f"https://www.strava.com/segments/{segment_id}"
-
+        
         try:
-            # Use the already-initialized browser (no more async with)
-            page = await self.browser.new_page()
-            
-            # Login only if not already logged in
-            if not self.logged_in:
-                await self.login_to_strava(page)
-                self.logged_in = True
-            
-            # Go to segment page
+            page = await agentql.wrap_async(await self.browser.new_page())
             await page.goto(segment_url)
+            await page.wait_for_timeout(1500)
             
-            # Wait for leaderboard to appear (or timeout if none)
-            try:
-                await page.wait_for_selector('table.leaderboard', timeout=5000)
-            except:
-                print(f"  ✗ No leaderboard found")
-                await page.close()
-                return None, None, None
+            query = """
+            {
+              table {
+                row[] {
+                  time
+                }
+              }
+            }
+            """
             
-            # Extract times using CSS selectors
-            times_str = await page.eval_on_selector_all(
-                'table.leaderboard tr td.time',
-                'elements => elements.map(el => el.textContent.trim())'
-            )
+            leaderboard_data = await page.query_data(query)
+            await page.close()
             
-            await page.close()  # Close the page after each segment
+            rows = leaderboard_data.get("table", {}).get("row", [])
+            times_str = [row.get("time") for row in rows if row.get("time")]
             
             times_seconds = [self.time_to_seconds(t) for t in times_str]
             times_seconds = [t for t in times_seconds if t is not None]
@@ -272,6 +263,7 @@ class StravaSegmentExtractor:
             return None, None, None
     
     async def extract_segment_data_async(self, segment_id, segment_name=None):
+        """Extract data: AgentQL first, then Strava API only if leaderboard exists"""
         
         # Step 1: Check leaderboard FIRST (AgentQL)
         best_time, average_top_10, tenth_best = await self.scrape_leaderboard_times(segment_id)
@@ -317,7 +309,7 @@ class StravaSegmentExtractor:
         
         all_segments = []
         segment_ids = set()
-        grid_size = 8
+        grid_size = 5
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
@@ -525,29 +517,42 @@ class StravaSegmentExtractor:
 
     
 async def main():
+    """Main execution function"""
+    # Setup paths
     project_root = Path(__file__).resolve().parents[2]
     config_path = project_root / "config.yaml"
-
+    
+    # Load configuration
+    config = load_config(config_path)
+    
+    # Get Strava token
     ACCESS_TOKEN = get_valid_token(config_path)
     if not ACCESS_TOKEN:
-        print("Failed to get valid token. Exiting.")
+        print("✗ Failed to get valid token. Exiting.")
         return
+    print("✓ Strava token is valid")
     
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    os.environ["AGENTQL_API_KEY"] = config["agentql"]["api_key"]
-    email = config['strava']['email']
-    password = config['strava']['password']
+    # Get AgentQL API key and configure
+    AGENTQL_API_KEY = config["agentql"]["api_key"]
+    setup_agentql(AGENTQL_API_KEY)
     
-    extractor = StravaSegmentExtractor(ACCESS_TOKEN, email, password)
+    # Initialize extractor
+    extractor = StravaSegmentExtractor(ACCESS_TOKEN, AGENTQL_API_KEY)
+    
+    # Run extraction
     nb_existing = extractor.number_of_processed_segments()
-    print(f"Already processed segments: {nb_existing}")
-    data = await extractor.extract_all_data_async(max_segments=nb_existing + 50)
-    extractor.save_data(data)
+    target_segments = nb_existing + 50
     
+    data = await run_extraction(extractor, max_segments=target_segments)
+    
+    # Print summary
     print(f"\n{'='*50}")
+    print(f"EXTRACTION SUMMARY")
+    print(f"{'='*50}")
     print(f"New segments extracted: {len(data)}")
+    print(f"Total processed segments: {extractor.number_of_processed_segments()}")
     print(f"Segments without leaderboard: {len(extractor.no_leaderboard_ids)}")
+    print(f"{'='*50}")
 
 
 if __name__ == "__main__":
