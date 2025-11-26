@@ -498,7 +498,72 @@
     13529076,
     25861651,
     24659350,
-    25784390
+    25784390,
+    21584299,
+    21584314,
+    16537016,
+    21126751,
+    16967087,
+    31214797,
+    31214553,
+    16967072,
+    22617498,
+    12389853,
+    14752021,
+    22450477,
+    23197011,
+    17857098,
+    9305424,
+    14910412,
+    21235587,
+    10767769,
+    23191157,
+    27196711,
+    19050651,
+    21502052,
+    21307224,
+    14453844,
+    23486300,
+    17439405,
+    23950467,
+    5881795,
+    21898469,
+    22315375,
+    5138562,
+    10354789,
+    22942811,
+    18124641,
+    19386923,
+    17942453,
+    2279302,
+    21502083,
+    2279252,
+    5973324,
+    28322112,
+    28463182,
+    28463174,
+    30115260,
+    24367302,
+    3896306,
+    4590046,
+    19954834,
+    18359860,
+    5942317,
+    2629047,
+    16861823,
+    3774007,
+    6031939,
+    6031941,
+    6031940,
+    16861258,
+    3818741,
+    17756580,
+    14628070,
+    5257857,
+    18180600,
+    16487447,
+    5942308,
+    5914303
   ],
   "segments": [
     {
@@ -2995,6 +3060,331 @@
       "id": 25784390,
       "name": "Mont\u00e9e entrainement",
       "checked_at": "2025-11-25 20:31:53"
+    },
+    {
+      "id": 21584299,
+      "name": "Descente Emaus",
+      "checked_at": "2025-11-26 10:58:05"
+    },
+    {
+      "id": 21584314,
+      "name": "Route de pierrefonds",
+      "checked_at": "2025-11-26 10:58:18"
+    },
+    {
+      "id": 16537016,
+      "name": "rpima 3/4 fdm pierrefonds",
+      "checked_at": "2025-11-26 10:58:31"
+    },
+    {
+      "id": 21126751,
+      "name": "Piste apr\u00e8s a\u00e9roport",
+      "checked_at": "2025-11-26 10:58:43"
+    },
+    {
+      "id": 16967087,
+      "name": "Climb 1 xc st pierre",
+      "checked_at": "2025-11-26 10:58:54"
+    },
+    {
+      "id": 31214797,
+      "name": "Circuit Du 2 ",
+      "checked_at": "2025-11-26 11:05:44"
+    },
+    {
+      "id": 31214553,
+      "name": "Petite bosse ",
+      "checked_at": "2025-11-26 11:05:55"
+    },
+    {
+      "id": 16967072,
+      "name": "Climb xc st pierre ",
+      "checked_at": "2025-11-26 11:06:06"
+    },
+    {
+      "id": 22617498,
+      "name": "Terrain de moto-cross",
+      "checked_at": "2025-11-26 11:06:16"
+    },
+    {
+      "id": 12389853,
+      "name": "Montee Bassin Martin",
+      "checked_at": "2025-11-26 11:36:00"
+    },
+    {
+      "id": 14752021,
+      "name": "GAND BOIS",
+      "checked_at": "2025-11-26 11:36:11"
+    },
+    {
+      "id": 22450477,
+      "name": "* D29: Bassin Plat - Montvert Les Bas",
+      "checked_at": "2025-11-26 11:36:23"
+    },
+    {
+      "id": 23197011,
+      "name": "CHU",
+      "checked_at": "2025-11-26 11:36:34"
+    },
+    {
+      "id": 17857098,
+      "name": "Descente vtt chinless",
+      "checked_at": "2025-11-26 11:36:45"
+    },
+    {
+      "id": 9305424,
+      "name": "Chemin Bassin Martin part.",
+      "checked_at": "2025-11-26 11:36:56"
+    },
+    {
+      "id": 14910412,
+      "name": "Chemin Grosset",
+      "checked_at": "2025-11-26 11:37:06"
+    },
+    {
+      "id": 21235587,
+      "name": "Mont\u00e9e Grand-Anse",
+      "checked_at": "2025-11-26 11:37:17"
+    },
+    {
+      "id": 10767769,
+      "name": "La Cr\u00eate A1",
+      "checked_at": "2025-11-26 11:37:28"
+    },
+    {
+      "id": 23191157,
+      "name": "Rond Point Langevin / Rond Point Vincendo",
+      "checked_at": "2025-11-26 11:37:39"
+    },
+    {
+      "id": 27196711,
+      "name": "Mont\u00e9e crois\u00e9e Jean Petit/les Jacques \u00e0 crois\u00e9e Vival Jean Petit",
+      "checked_at": "2025-11-26 11:37:50"
+    },
+    {
+      "id": 19050651,
+      "name": "Cr\u00eate partie 2 \u00e0 partir de terrain galet ",
+      "checked_at": "2025-11-26 11:38:01"
+    },
+    {
+      "id": 21502052,
+      "name": "bosse apr\u00e8s 2\u00e8me pont",
+      "checked_at": "2025-11-26 11:38:12"
+    },
+    {
+      "id": 21307224,
+      "name": "Depart 1er intersection",
+      "checked_at": "2025-11-26 11:38:24"
+    },
+    {
+      "id": 14453844,
+      "name": "ravin\u00e9 s\u00e8che tamarin / snack bar",
+      "checked_at": "2025-11-26 11:38:35"
+    },
+    {
+      "id": 23486300,
+      "name": "Sprint entree Avirons centre",
+      "checked_at": "2025-11-26 11:38:48"
+    },
+    {
+      "id": 17439405,
+      "name": "aviron a fond",
+      "checked_at": "2025-11-26 11:39:00"
+    },
+    {
+      "id": 23950467,
+      "name": "Crois\u00e9e Bellevue / Canot Etang-Sal\u00e9",
+      "checked_at": "2025-11-26 11:39:11"
+    },
+    {
+      "id": 5881795,
+      "name": "chemin palmer",
+      "checked_at": "2025-11-26 11:39:23"
+    },
+    {
+      "id": 21898469,
+      "name": "Chemin avant Mont\u00e9 les Makes .",
+      "checked_at": "2025-11-26 11:39:34"
+    },
+    {
+      "id": 22315375,
+      "name": "Mont\u00e9e Chemin Emmanuel Hoarau",
+      "checked_at": "2025-11-26 11:39:45"
+    },
+    {
+      "id": 5138562,
+      "name": "Sentier de la Rivi\u00e8re des Remparts Roche Plate Climb",
+      "checked_at": "2025-11-26 11:39:56"
+    },
+    {
+      "id": 10354789,
+      "name": "17 eme vers parcours de sant\u00e9",
+      "checked_at": "2025-11-26 11:40:07"
+    },
+    {
+      "id": 22942811,
+      "name": "Chemin des remparts Climb",
+      "checked_at": "2025-11-26 11:40:17"
+    },
+    {
+      "id": 18124641,
+      "name": "cote manou raid--",
+      "checked_at": "2025-11-26 11:40:29"
+    },
+    {
+      "id": 19386923,
+      "name": "last part domaine vidot ",
+      "checked_at": "2025-11-26 11:40:39"
+    },
+    {
+      "id": 17942453,
+      "name": "Raidar du Coin Tranquille",
+      "checked_at": "2025-11-26 11:40:52"
+    },
+    {
+      "id": 2279302,
+      "name": "Plaine des Sables sortie - pinch to the carpark",
+      "checked_at": "2025-11-26 11:41:04"
+    },
+    {
+      "id": 21502083,
+      "name": "mont\u00e9e cascade grand galet",
+      "checked_at": "2025-11-26 11:41:15"
+    },
+    {
+      "id": 2279252,
+      "name": "Rte Du Volcan Climb",
+      "checked_at": "2025-11-26 11:41:26"
+    },
+    {
+      "id": 5973324,
+      "name": "Rue Emile Mussard Climb",
+      "checked_at": "2025-11-26 11:41:36"
+    },
+    {
+      "id": 28322112,
+      "name": "Descente plaine des sables",
+      "checked_at": "2025-11-26 11:41:48"
+    },
+    {
+      "id": 28463182,
+      "name": "Rempart du volcan : Piton de Bert -> Piton Hubert",
+      "checked_at": "2025-11-26 11:41:59"
+    },
+    {
+      "id": 28463174,
+      "name": "Rempart du volcan -> Piton de Bert",
+      "checked_at": "2025-11-26 11:42:10"
+    },
+    {
+      "id": 30115260,
+      "name": "Mont\u00e9e chemin G\u00e9ranium \u00e0 Grand Coude",
+      "checked_at": "2025-11-26 11:42:21"
+    },
+    {
+      "id": 24367302,
+      "name": "BOSSE POINTE DES CHATEAUX",
+      "checked_at": "2025-11-26 11:42:32"
+    },
+    {
+      "id": 3896306,
+      "name": "faux plat sortie St Leu",
+      "checked_at": "2025-11-26 11:42:44"
+    },
+    {
+      "id": 4590046,
+      "name": "Mont\u00e9e au coll\u00e8ge ",
+      "checked_at": "2025-11-26 11:42:55"
+    },
+    {
+      "id": 19954834,
+      "name": "Mont\u00e9e Rue des Artisans",
+      "checked_at": "2025-11-26 11:43:08"
+    },
+    {
+      "id": 18359860,
+      "name": "pharmacie stella-cd13",
+      "checked_at": "2025-11-26 11:43:20"
+    },
+    {
+      "id": 5942317,
+      "name": "pavillon/tunel en terre",
+      "checked_at": "2025-11-26 11:43:32"
+    },
+    {
+      "id": 2629047,
+      "name": "Rue De Cilaos Climb",
+      "checked_at": "2025-11-26 11:43:44"
+    },
+    {
+      "id": 16861823,
+      "name": "Montee Jules Ferry",
+      "checked_at": "2025-11-26 11:43:57"
+    },
+    {
+      "id": 3774007,
+      "name": "Route nationale N\u00b05 Climb",
+      "checked_at": "2025-11-26 11:44:08"
+    },
+    {
+      "id": 6031939,
+      "name": "Rue du Bon Accueil Climb",
+      "checked_at": "2025-11-26 11:44:20"
+    },
+    {
+      "id": 6031941,
+      "name": "D 20 Climb",
+      "checked_at": "2025-11-26 11:44:31"
+    },
+    {
+      "id": 6031940,
+      "name": "D 20 Climb",
+      "checked_at": "2025-11-26 11:44:43"
+    },
+    {
+      "id": 16861258,
+      "name": "UH route foresti\u00e8re tevelave vers camp2000",
+      "checked_at": "2025-11-26 11:44:55"
+    },
+    {
+      "id": 3818741,
+      "name": "Route Foresti\u00e8re 58 de la Scierie et du Haut des Makes Climb",
+      "checked_at": "2025-11-26 11:45:06"
+    },
+    {
+      "id": 17756580,
+      "name": "2 \u00e8me tunnel - 3 \u00e8me tunnel ",
+      "checked_at": "2025-11-26 11:45:17"
+    },
+    {
+      "id": 14628070,
+      "name": "parking alt 927 vers portail du Dimitile",
+      "checked_at": "2025-11-26 11:45:29"
+    },
+    {
+      "id": 5257857,
+      "name": "UH1 Dimitile",
+      "checked_at": "2025-11-26 11:45:42"
+    },
+    {
+      "id": 18180600,
+      "name": "Sentier Troph\u00e9es Mondiaux (entre la Ravine et l'escalier b\u00e9ton)",
+      "checked_at": "2025-11-26 11:45:54"
+    },
+    {
+      "id": 16487447,
+      "name": "Mont\u00e9e Chemin Frappier de Montbenoit",
+      "checked_at": "2025-11-26 11:46:06"
+    },
+    {
+      "id": 5942308,
+      "name": "bras benjoin/tunel gueule rouge",
+      "checked_at": "2025-11-26 11:46:17"
+    },
+    {
+      "id": 5914303,
+      "name": "RN5 Climb",
+      "checked_at": "2025-11-26 11:46:29"
     }
   ]
 }

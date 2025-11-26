@@ -190,7 +190,6 @@ class StravaSegmentExtractor:
             raise RateLimitException("Strava API rate limit reached (15min limit)")
         return None
     
-    @staticmethod
     def time_to_seconds(self, time_str):
         """Convert time string to seconds. Handles formats including Strava weird ones."""
         try:
@@ -238,11 +237,11 @@ class StravaSegmentExtractor:
             
             query = """
             {
-              table {
+            table {
                 row[] {
-                  time
+                time
                 }
-              }
+            }
             }
             """
             
@@ -250,10 +249,20 @@ class StravaSegmentExtractor:
             await page.close()
             
             rows = leaderboard_data.get("table", {}).get("row", [])
-            times_str = [row.get("time") for row in rows if row.get("time")]
             
-            times_seconds = [self.time_to_seconds(t) for t in times_str]
-            times_seconds = [t for t in times_seconds if t is not None]
+            # Filtrer les valeurs vides
+            times_str = [
+                row.get("time") 
+                for row in rows 
+                if row.get("time") and str(row.get("time")).strip()
+            ]
+            
+            # Convertir et filtrer les None
+            times_seconds = []
+            for t in times_str:
+                seconds = self.time_to_seconds(t)
+                if seconds is not None:
+                    times_seconds.append(seconds)
             
             if not times_seconds:
                 return None, None, None
@@ -265,9 +274,9 @@ class StravaSegmentExtractor:
             
             return best_time, average_top_10, tenth_best
                 
-        except Exception as e:
-            print(f"Error scraping segment {segment_id}: {e}")
+        except Exception:
             return None, None, None
+
     
     async def extract_segment_data_async(self, segment_id, segment_name=None):
         """Extract data: AgentQL first, then Strava API only if leaderboard exists"""
@@ -316,7 +325,7 @@ class StravaSegmentExtractor:
         
         all_segments = []
         segment_ids = set()
-        grid_size = 7
+        grid_size = 8
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
