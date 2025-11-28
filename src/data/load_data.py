@@ -1,76 +1,34 @@
 from pathlib import Path
 import requests
-import json
 import time
 import yaml
 import os
-import csv
 import asyncio
 import agentql
 import pandas as pd
 from playwright.async_api import async_playwright
 from Strava_Token_Manager import StravaTokenManager, make_strava_request_with_retry
+from Leaderboard_Extractor import LeaderboardExtractor  # ← Import the new class
 
 
 class RateLimitException(Exception):
     """Raised when Strava API rate limit is hit"""
     pass
 
-def refresh_strava_token(config_path: Path) -> str:
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    strava = config['strava']
-    response = requests.post(
-        "https://www.strava.com/oauth/token",
-        data={
-            "client_id": strava['client_id'],
-            "client_secret": strava['client_secret'],
-            "grant_type": "refresh_token",
-            "refresh_token": strava['refresh_token']
-        }
-    )
-    
-    if response.status_code == 200:
-        tokens = response.json()
-        config['strava']['access_token'] = tokens['access_token']
-        config['strava']['refresh_token'] = tokens['refresh_token']
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
-        print("✓ Token refreshed!")
-        return tokens['access_token']
-    print(f"✗ Token refresh failed: {response.text}")
-    return None
-
-def get_valid_token(config_path: Path) -> str:
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    access_token = config['strava']['access_token']
-    response = requests.get(
-        "https://www.strava.com/api/v3/athlete",
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
-    
-    if response.status_code == 200:
-        return access_token
-    elif response.status_code == 401:
-        print("Token expired, refreshing...")
-        return refresh_strava_token(config_path)
-    print(f"✗ Unknown error: {response.status_code}")
-    return None
 
 def load_config(config_path):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
+
 def setup_agentql(api_key):
     agentql.configure(api_key=api_key)
     print("✓ AgentQL configured")
 
+
 class StravaSegmentExtractor:
     def __init__(self, token_manager, agentql_api_key):
-        self.token_manager = token_manager  # ← Changed from access_token
+        self.token_manager = token_manager
         self.agentql_api_key = agentql_api_key
         self.base_url = "https://www.strava.com/api/v3"
         self.project_root = Path(__file__).resolve().parents[2]
@@ -79,6 +37,7 @@ class StravaSegmentExtractor:
         
         self.browser = None
         self.playwright = None
+        self.leaderboard_extractor = None  # ← Will be initialized with browser
     
     def _make_api_request(self, url, params=None):
         """Centralized API request handler with auto-retry"""
@@ -108,38 +67,32 @@ class StravaSegmentExtractor:
         if response and response.status_code == 200:
             return response.json()
         elif response is None:
-            # All accounts exhausted
             raise RateLimitException("All Strava accounts are rate-limited")
         return None
     
-    def time_to_seconds(self, time_str):
-        """Convert time string to seconds"""
-        try:
-            time_str = time_str.strip().lower()
-            
-            # Handle "9seconds", "9s", etc.
-            if "sec" in time_str or time_str.endswith("s"):
-                digits = ''.join(ch for ch in time_str if ch.isdigit())
-                return int(digits)
-            
-            parts = time_str.split(':')
-            
-            if len(parts) == 1:  # "45"
-                return int(parts[0])
-            elif len(parts) == 2:  # "5:24"
-                return int(parts[0]) * 60 + int(parts[1])
-            elif len(parts) == 3:  # "1:23:45"
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-            
-            return None
-        except (ValueError, AttributeError):
-            return None
+    def get_segment_details(self, segment_id):
+        """Get detailed segment info with auto account switching"""
+        url = f"{self.base_url}/segments/{segment_id}"
+        
+        response = self._make_api_request(url)
+        
+        if response and response.status_code == 200:
+            return response.json()
+        elif response is None:
+            raise RateLimitException("All Strava accounts are rate-limited")
+        return None
     
     async def init_browser(self):
-        """Initialize Playwright browser"""
+        """Initialize Playwright browser and LeaderboardExtractor"""
         if not self.browser:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(headless=True)
+            
+            # ← Initialize LeaderboardExtractor with browser
+            self.leaderboard_extractor = LeaderboardExtractor(
+                method="agentql",
+                browser=self.browser
+            )
     
     async def close_browser(self):
         """Close Playwright browser"""
@@ -148,65 +101,15 @@ class StravaSegmentExtractor:
             await self.playwright.stop()
             self.browser = None
             self.playwright = None
+            self.leaderboard_extractor = None
     
-    async def scrape_leaderboard_times(self, segment_id):
-        """Scrape leaderboard from Strava webpage (AgentQL)"""
-        segment_url = f"https://www.strava.com/segments/{segment_id}"
-        
-        try:
-            page = await agentql.wrap_async(await self.browser.new_page())
-            await page.goto(segment_url)
-            await page.wait_for_timeout(1500)
-            
-            query = """
-            {
-              table {
-                row[] {
-                  time
-                }
-              }
-            }
-            """
-            
-            leaderboard_data = await page.query_data(query)
-            await page.close()
-            
-            rows = leaderboard_data.get("table", {}).get("row", [])
-            
-            # Filter and convert times
-            times_str = [
-                row.get("time") 
-                for row in rows 
-                if row.get("time") and str(row.get("time")).strip()
-            ]
-            
-            times_seconds = []
-            for t in times_str:
-                seconds = self.time_to_seconds(t)
-                if seconds is not None:
-                    times_seconds.append(seconds)
-            
-            if not times_seconds:
-                return None, None, None
-            
-            best_time = times_seconds[0]
-            top_10 = times_seconds[:10]
-            average_top_10 = sum(top_10) / len(top_10)
-            tenth_best = times_seconds[9] if len(times_seconds) >= 10 else None
-            
-            return best_time, average_top_10, tenth_best
-                
-        except Exception as e:
-            print(f"  Error scraping: {e}")
-            return None, None, None
-    
-    async def extract_segment_data_async(self, segment_basic_data):
+    async def extract_segment_data_async(self, segment_basic_data):                                                             
         """Extract full segment data: scrape leaderboard + get details + streams"""
         segment_id = segment_basic_data["id"]
         segment_name = segment_basic_data.get("name", "Unknown")
         
-        # Step 1: Scrape leaderboard (AgentQL - no API call)
-        best_time, average_top_10, tenth_best = await self.scrape_leaderboard_times(segment_id)
+        # Step 1: Scrape leaderboard using LeaderboardExtractor
+        best_time, average_top_10, tenth_best = await self.leaderboard_extractor.get_times(segment_id)
         
         if best_time is None:
             print(f"  ✗ No leaderboard data")
@@ -214,8 +117,8 @@ class StravaSegmentExtractor:
         
         print(f"  ✓ Leaderboard: best={best_time}s, avg={average_top_10:.1f}s")
         
-        # Step 2: Get segment details (API call - needed for elevation_low/high, effort_count, etc.)
-        time.sleep(0.2)
+        # Step 2: Get segment details (API call)
+        time.sleep(1.0)
         details = self.get_segment_details(segment_id)
         
         if not details:
@@ -229,34 +132,22 @@ class StravaSegmentExtractor:
         # Combine all data
         return {
             "id": segment_id,
-            "name": details.get("name"),  # From details (more complete)
+            "name": details.get("name"),
             "activity_type": details.get("activity_type"),
             "distance": details.get("distance"),
-            "elevation_gain": details.get("total_elevation_gain"),  # ← From details
-            "elevation_low": details.get("elevation_low"),  # ← From details
-            "elevation_high": details.get("elevation_high"),  # ← From details
+            "elevation_gain": details.get("total_elevation_gain"),
+            "elevation_low": details.get("elevation_low"),
+            "elevation_high": details.get("elevation_high"),
             "best_time": best_time,
             "average_top_10_time": round(average_top_10, 2) if average_top_10 else None,
             "tenth_best_time": tenth_best,
-            "total_effort_count": details.get("effort_count"),  # ← From details
-            "total_athlete_count": details.get("athlete_count"),  # ← From details
+            "total_effort_count": details.get("effort_count"),
+            "total_athlete_count": details.get("athlete_count"),
             "altitude_profile": streams.get("altitude", {}).get("data", []) if streams else [],
             "distance_profile": streams.get("distance", {}).get("data", []) if streams else [],
             "coordinates": streams.get("latlng", {}).get("data", []) if streams else []
         }
     
-    def get_segment_details(self, segment_id):
-        """Get detailed segment info with auto account switching"""
-        url = f"{self.base_url}/segments/{segment_id}"
-        
-        response = self._make_api_request(url)
-        
-        if response and response.status_code == 200:
-            return response.json()
-        elif response is None:
-            raise RateLimitException("All Strava accounts are rate-limited")
-        return None
-
     def search_reunion_segments(self, max_segments=100):
         """Search for segments in Reunion Island area"""
         lat_min, lat_max = -20.9573239, -20.9096153
@@ -264,7 +155,7 @@ class StravaSegmentExtractor:
         
         all_segments = []
         segment_ids = set()
-        grid_size = 3
+        grid_size = 4
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
@@ -297,7 +188,6 @@ class StravaSegmentExtractor:
         parquet_path = self.raw_folder / "reunion_segments.parquet"
         csv_path = self.raw_folder / "reunion_segments.csv"
         
-        # Try parquet first
         if parquet_path.exists():
             try:
                 df = pd.read_parquet(parquet_path)
@@ -305,7 +195,6 @@ class StravaSegmentExtractor:
             except Exception as e:
                 print(f"Error loading parquet: {e}")
         
-        # Fallback to CSV
         if csv_path.exists():
             try:
                 df = pd.read_csv(csv_path)
@@ -321,10 +210,8 @@ class StravaSegmentExtractor:
             print("No new data to save")
             return
         
-        # Load existing
         existing_data, existing_ids = self.load_existing_data()
         
-        # Merge new data
         added_count = 0
         for segment in new_data:
             if segment['id'] not in existing_ids:
@@ -338,15 +225,14 @@ class StravaSegmentExtractor:
         
         print(f"Added {added_count} new segments. Total: {len(existing_data)}")
         
-        # Convert to DataFrame
         df = pd.DataFrame(existing_data)
         
-        # Save to Parquet (includes profiles)
+        # Save Parquet
         parquet_path = self.raw_folder / "reunion_segments.parquet"
         df.to_parquet(parquet_path, index=False)
         print(f"✓ Parquet saved: {parquet_path}")
         
-        # Save to CSV (summary only, clean NaN values)
+        # Save CSV
         csv_path = self.raw_folder / "reunion_segments.csv"
         summary_cols = [
             'id', 'name', 'activity_type', 'distance', 'elevation_gain',
@@ -355,7 +241,6 @@ class StravaSegmentExtractor:
             'total_athlete_count'
         ]
         
-        # Select only existing columns
         cols_to_save = [c for c in summary_cols if c in df.columns]
         df[cols_to_save].to_csv(csv_path, index=False, na_rep='')
         print(f"✓ CSV saved: {csv_path}")
@@ -369,10 +254,8 @@ class StravaSegmentExtractor:
         """Main extraction pipeline"""
         print(f"Searching for up to {max_segments} segments...")
         
-        # Step 1: Find segments (API calls)
         all_segments = self.search_reunion_segments(max_segments)
         
-        # Step 2: Filter already processed
         _, existing_ids = self.load_existing_data()
         new_segments = [s for s in all_segments if s["id"] not in existing_ids]
         
@@ -384,7 +267,6 @@ class StravaSegmentExtractor:
             print("No new segments to process!")
             return []
         
-        # Step 3: Process new segments
         await self.init_browser()
         detailed_data = []
         
@@ -410,36 +292,28 @@ async def main():
     project_root = Path(__file__).resolve().parents[2]
     config_path = project_root / "config.yaml"
     
-    # Initialize token manager (replaces get_valid_token)
     token_manager = StravaTokenManager(config_path)
     print(f"✓ Using account: {token_manager.get_current_account()['name']}")
     
-    # Load AgentQL config
     config = token_manager.config
     AGENTQL_API_KEY = config["agentql"]["api_key"]
     setup_agentql(AGENTQL_API_KEY)
     
-    # Initialize extractor with token manager
     extractor = StravaSegmentExtractor(token_manager, AGENTQL_API_KEY)
     
-    # Run extraction (rest is the same)
     nb_existing = extractor.number_of_processed_segments()
     print(f"Already processed segments: {nb_existing}")
     
     target_segments = nb_existing + 50
     data = await extractor.extract_all_data_async(max_segments=target_segments)
     
-    # Save results
     extractor.save_data(data)
     
-    # Summary
     print(f"\n{'='*50}")
     print(f"EXTRACTION SUMMARY")
     print(f"{'='*50}")
     print(f"New segments extracted: {len(data)}")
     print(f"Total processed: {extractor.number_of_processed_segments()}")
-    
-    # Account usage stats
     token_manager.print_status()
     print(f"{'='*50}")
 
