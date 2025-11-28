@@ -1,8 +1,12 @@
 {
   "segment_ids": [
-    
+    24404996
   ],
   "segments": [
-   
+    {
+      "id": 24404996,
+      "name": "intersection bois rouge --> montauban",
+      "checked_at": "2025-11-28 14:48:34"
+    }
   ]
 }

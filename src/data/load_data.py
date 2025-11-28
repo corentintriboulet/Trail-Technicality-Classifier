@@ -7,7 +7,9 @@ import os
 import csv
 import asyncio
 import agentql
+import pandas as pd
 from playwright.async_api import async_playwright
+from Strava_Token_Manager import StravaTokenManager, make_strava_request_with_retry
 
 
 class RateLimitException(Exception):
@@ -59,167 +61,88 @@ def get_valid_token(config_path: Path) -> str:
     return None
 
 def load_config(config_path):
-    """
-    Load configuration from YAML file
-    
-    Returns:
-        dict: Configuration dictionary with strava and agentql keys
-    """
     with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    return config
+        return yaml.safe_load(f)
 
 def setup_agentql(api_key):
-    """
-    Configure AgentQL with API key
-    
-    Args:
-        api_key (str): AgentQL API key from config
-    """
     agentql.configure(api_key=api_key)
     print("✓ AgentQL configured")
 
-async def run_extraction(extractor, max_segments):
-    """
-    Run the segment extraction process
-    
-    Args:
-        extractor: StravaSegmentExtractor instance
-        max_segments (int): Maximum number of segments to extract
-    
-    Returns:
-        list: Extracted segment data
-    """
-    nb_existing = extractor.number_of_processed_segments()
-    print(f"Already processed segments: {nb_existing}")
-    
-    # Extract new segments
-    data = await extractor.extract_all_data_async(max_segments=max_segments)
-    
-    # Save data
-    extractor.save_data(data)
-    
-    return data
-
 class StravaSegmentExtractor:
-    def __init__(self, strava_access_token, agentql_api_key):
-        self.access_token = strava_access_token
+    def __init__(self, token_manager, agentql_api_key):
+        self.token_manager = token_manager  # ← Changed from access_token
         self.agentql_api_key = agentql_api_key
         self.base_url = "https://www.strava.com/api/v3"
-        self.headers = {"Authorization": f"Bearer {strava_access_token}"}
         self.project_root = Path(__file__).resolve().parents[2]
         self.raw_folder = self.project_root / "data" / "raw"
         os.makedirs(self.raw_folder, exist_ok=True)
         
         self.browser = None
         self.playwright = None
-        
-        # Load segments without leaderboard
-        self.no_leaderboard_file = self.raw_folder / "segments_no_leaderboard.json"
-        self.no_leaderboard_ids = self._load_no_leaderboard_ids()
     
-    def _load_no_leaderboard_ids(self) -> set:
-        """Load IDs of segments known to have no leaderboard"""
-        if self.no_leaderboard_file.exists():
-            with open(self.no_leaderboard_file, 'r') as f:
-                data = json.load(f)
-                return set(data.get('segment_ids', []))
-        return set()
-    
-    def _save_no_leaderboard_id(self, segment_id: int, segment_name: str = None):
-        """Add a segment to the no-leaderboard list"""
-        self.no_leaderboard_ids.add(segment_id)
-        
-        # Load existing data
-        if self.no_leaderboard_file.exists():
-            with open(self.no_leaderboard_file, 'r') as f:
-                data = json.load(f)
-        else:
-            data = {'segment_ids': [], 'segments': []}
-        
-        # Add if not already there
-        if segment_id not in data['segment_ids']:
-            data['segment_ids'].append(segment_id)
-            data['segments'].append({
-                'id': segment_id,
-                'name': segment_name,
-                'checked_at': time.strftime('%Y-%m-%d %H:%M:%S')
-            })
-            
-            with open(self.no_leaderboard_file, 'w') as f:
-                json.dump(data, f, indent=2)
+    def _make_api_request(self, url, params=None):
+        """Centralized API request handler with auto-retry"""
+        return make_strava_request_with_retry(self.token_manager, url, params)
     
     def explore_segments(self, bounds, activity_type="riding"):
+        """Get segments in a geographic area with auto account switching"""
         url = f"{self.base_url}/segments/explore"
         params = {
             "bounds": ",".join(map(str, bounds)),
             "activity_type": activity_type
         }
         
-        response = requests.get(url, headers=self.headers, params=params)
-        if response.status_code == 200:
-            return response.json().get("segments", [])
-        elif response.status_code == 429:
-            print("Rate limited on explore, waiting 60s...")
-            time.sleep(60)
-            return self.explore_segments(bounds, activity_type)
-        else:
-            print(f"Error: {response.status_code} - {response.text}")
-            return []
-    
-    def get_segment_details(self, segment_id):
-        url = f"{self.base_url}/segments/{segment_id}"
-        response = requests.get(url, headers=self.headers)
+        response = self._make_api_request(url, params)
         
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 429:
-            raise RateLimitException("Strava API rate limit reached (15min limit)")
-        else:
-            print(f"Error getting segment {segment_id}: {response.status_code}")
-            return None
+        if response and response.status_code == 200:
+            return response.json().get("segments", [])
+        return []
     
     def get_segment_streams(self, segment_id):
+        """Get altitude/distance profile with auto account switching"""
         url = f"{self.base_url}/segments/{segment_id}/streams"
         params = {"keys": "altitude,distance,latlng", "key_by_type": True}
-        response = requests.get(url, headers=self.headers, params=params)
         
-        if response.status_code == 200:
+        response = self._make_api_request(url, params)
+        
+        if response and response.status_code == 200:
             return response.json()
-        elif response.status_code == 429:
-            raise RateLimitException("Strava API rate limit reached (15min limit)")
+        elif response is None:
+            # All accounts exhausted
+            raise RateLimitException("All Strava accounts are rate-limited")
         return None
     
     def time_to_seconds(self, time_str):
-        """Convert time string to seconds. Handles formats including Strava weird ones."""
+        """Convert time string to seconds"""
         try:
             time_str = time_str.strip().lower()
-
-            # Case: "9seconds", "9 seconds", "9s", "9 sec", etc.
+            
+            # Handle "9seconds", "9s", etc.
             if "sec" in time_str or time_str.endswith("s"):
                 digits = ''.join(ch for ch in time_str if ch.isdigit())
                 return int(digits)
-
+            
             parts = time_str.split(':')
-
+            
             if len(parts) == 1:  # "45"
                 return int(parts[0])
             elif len(parts) == 2:  # "5:24"
                 return int(parts[0]) * 60 + int(parts[1])
             elif len(parts) == 3:  # "1:23:45"
                 return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-            else:
-                return None
-
+            
+            return None
         except (ValueError, AttributeError):
             return None
     
     async def init_browser(self):
+        """Initialize Playwright browser"""
         if not self.browser:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(headless=True)
     
     async def close_browser(self):
+        """Close Playwright browser"""
         if self.browser:
             await self.browser.close()
             await self.playwright.stop()
@@ -227,7 +150,7 @@ class StravaSegmentExtractor:
             self.playwright = None
     
     async def scrape_leaderboard_times(self, segment_id):
-        """Scrape leaderboard using shared browser"""
+        """Scrape leaderboard from Strava webpage (AgentQL)"""
         segment_url = f"https://www.strava.com/segments/{segment_id}"
         
         try:
@@ -237,11 +160,11 @@ class StravaSegmentExtractor:
             
             query = """
             {
-            table {
+              table {
                 row[] {
-                time
+                  time
                 }
-            }
+              }
             }
             """
             
@@ -250,14 +173,13 @@ class StravaSegmentExtractor:
             
             rows = leaderboard_data.get("table", {}).get("row", [])
             
-            # Filtrer les valeurs vides
+            # Filter and convert times
             times_str = [
                 row.get("time") 
                 for row in rows 
                 if row.get("time") and str(row.get("time")).strip()
             ]
             
-            # Convertir et filtrer les None
             times_seconds = []
             for t in times_str:
                 seconds = self.time_to_seconds(t)
@@ -274,57 +196,75 @@ class StravaSegmentExtractor:
             
             return best_time, average_top_10, tenth_best
                 
-        except Exception:
+        except Exception as e:
+            print(f"  Error scraping: {e}")
             return None, None, None
-
-    async def extract_segment_data_async(self, segment_id, segment_name=None):
-        """Extract data: AgentQL first, then Strava API only if leaderboard exists"""
+    
+    async def extract_segment_data_async(self, segment_basic_data):
+        """Extract full segment data: scrape leaderboard + get details + streams"""
+        segment_id = segment_basic_data["id"]
+        segment_name = segment_basic_data.get("name", "Unknown")
         
-        # Step 1: Check leaderboard FIRST (AgentQL)
+        # Step 1: Scrape leaderboard (AgentQL - no API call)
         best_time, average_top_10, tenth_best = await self.scrape_leaderboard_times(segment_id)
         
-        # If no leaderboard, save to blacklist and skip
         if best_time is None:
-            print(f"  ✗ No leaderboard - adding to skip list")
-            self._save_no_leaderboard_id(segment_id, segment_name)
+            print(f"  ✗ No leaderboard data")
             return None
         
-        print(f"  ✓ Leaderboard found (best: {best_time}s)")
+        print(f"  ✓ Leaderboard: best={best_time}s, avg={average_top_10:.1f}s")
         
-        # Step 2: Only now call Strava API (since we know segment is valid)
-        time.sleep(0.2)  # Rate limiting
+        # Step 2: Get segment details (API call - needed for elevation_low/high, effort_count, etc.)
+        time.sleep(0.2)
         details = self.get_segment_details(segment_id)
+        
         if not details:
+            print(f"  ✗ Failed to get segment details")
             return None
         
+        # Step 3: Get altitude profile (API call)
         time.sleep(0.2)
         streams = self.get_segment_streams(segment_id)
         
+        # Combine all data
         return {
             "id": segment_id,
-            "name": details.get("name"),
+            "name": details.get("name"),  # From details (more complete)
             "activity_type": details.get("activity_type"),
             "distance": details.get("distance"),
-            "elevation_gain": details.get("total_elevation_gain"),
-            "elevation_low": details.get("elevation_low"),
-            "elevation_high": details.get("elevation_high"),
+            "elevation_gain": details.get("total_elevation_gain"),  # ← From details
+            "elevation_low": details.get("elevation_low"),  # ← From details
+            "elevation_high": details.get("elevation_high"),  # ← From details
             "best_time": best_time,
             "average_top_10_time": round(average_top_10, 2) if average_top_10 else None,
             "tenth_best_time": tenth_best,
-            "total_effort_count": details.get("effort_count"),
-            "total_athlete_count": details.get("athlete_count"),
+            "total_effort_count": details.get("effort_count"),  # ← From details
+            "total_athlete_count": details.get("athlete_count"),  # ← From details
             "altitude_profile": streams.get("altitude", {}).get("data", []) if streams else [],
             "distance_profile": streams.get("distance", {}).get("data", []) if streams else [],
             "coordinates": streams.get("latlng", {}).get("data", []) if streams else []
         }
     
+    def get_segment_details(self, segment_id):
+        """Get detailed segment info with auto account switching"""
+        url = f"{self.base_url}/segments/{segment_id}"
+        
+        response = self._make_api_request(url)
+        
+        if response and response.status_code == 200:
+            return response.json()
+        elif response is None:
+            raise RateLimitException("All Strava accounts are rate-limited")
+        return None
+
     def search_reunion_segments(self, max_segments=100):
-        lat_min, lat_max = -21.4, -20.8
-        lng_min, lng_max = 55.2, 55.8
+        """Search for segments in Reunion Island area"""
+        lat_min, lat_max = -20.9573239, -20.9096153
+        lng_min, lng_max = 55.4785652, 55.5090946
         
         all_segments = []
         segment_ids = set()
-        grid_size = 6
+        grid_size = 3
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
@@ -353,220 +293,154 @@ class StravaSegmentExtractor:
         return all_segments[:max_segments]
     
     def load_existing_data(self):
+        """Load existing segments from parquet or CSV"""
         parquet_path = self.raw_folder / "reunion_segments.parquet"
         csv_path = self.raw_folder / "reunion_segments.csv"
         
+        # Try parquet first
         if parquet_path.exists():
             try:
-                import pandas as pd
                 df = pd.read_parquet(parquet_path)
                 return df.to_dict('records'), set(df['id'].tolist())
-            except:
-                pass
+            except Exception as e:
+                print(f"Error loading parquet: {e}")
         
+        # Fallback to CSV
         if csv_path.exists():
-            existing_data = []
-            existing_ids = set()
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    row['id'] = int(row['id'])
-                    existing_data.append(row)
-                    existing_ids.add(row['id'])
-            return existing_data, existing_ids
+            try:
+                df = pd.read_csv(csv_path)
+                return df.to_dict('records'), set(df['id'].tolist())
+            except Exception as e:
+                print(f"Error loading CSV: {e}")
         
         return [], set()
     
-    def save_data(self, data):
-        if not data:
+    def save_data(self, new_data):
+        """Save data to parquet and CSV"""
+        if not new_data:
             print("No new data to save")
             return
         
+        # Load existing
         existing_data, existing_ids = self.load_existing_data()
         
-        new_count = 0
-        for segment in data:
+        # Merge new data
+        added_count = 0
+        for segment in new_data:
             if segment['id'] not in existing_ids:
                 existing_data.append(segment)
                 existing_ids.add(segment['id'])
-                new_count += 1
+                added_count += 1
         
-        print(f"Added {new_count} new segments. Total: {len(existing_data)}")
-        
-        # Save to Parquet (main storage - includes profiles)
-        try:
-            import pandas as pd
-            df = pd.DataFrame(existing_data)
-            parquet_path = self.raw_folder / "reunion_segments.parquet"
-            df.to_parquet(parquet_path, index=False)
-            print(f"Parquet saved to {parquet_path}")
-        except ImportError:
-            print("pandas/pyarrow not installed")
+        if added_count == 0:
+            print("No new segments added (all were duplicates)")
             return
         
-        # Save to CSV (quick view - no profiles)
+        print(f"Added {added_count} new segments. Total: {len(existing_data)}")
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(existing_data)
+        
+        # Save to Parquet (includes profiles)
+        parquet_path = self.raw_folder / "reunion_segments.parquet"
+        df.to_parquet(parquet_path, index=False)
+        print(f"✓ Parquet saved: {parquet_path}")
+        
+        # Save to CSV (summary only, clean NaN values)
         csv_path = self.raw_folder / "reunion_segments.csv"
-        fieldnames = [
+        summary_cols = [
             'id', 'name', 'activity_type', 'distance', 'elevation_gain',
             'elevation_low', 'elevation_high', 'best_time', 
             'average_top_10_time', 'tenth_best_time', 'total_effort_count', 
             'total_athlete_count'
         ]
         
-        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            for segment in existing_data:
-                row = {k: segment.get(k) for k in fieldnames}
-                writer.writerow(row)
-        
-        print(f"CSV saved to {csv_path}")
-
+        # Select only existing columns
+        cols_to_save = [c for c in summary_cols if c in df.columns]
+        df[cols_to_save].to_csv(csv_path, index=False, na_rep='')
+        print(f"✓ CSV saved: {csv_path}")
+    
     def number_of_processed_segments(self):
-        """
-        Count how many segments are already processed by checking:
-        - reunion_segments.csv
-        - segments_no_leaderboard.json
-
-        Returns:
-            total_count (int)
-            {
-                'csv_count': X,
-                'json_count': Y,
-                'csv_ids': set([...]),
-                'json_ids': set([...])
-            }
-        """
-        csv_path = self.raw_folder / "reunion_segments.csv"
-        json_path = self.raw_folder / "segments_no_leaderboard.json"
-
-        csv_ids = set()
-        json_ids = set()
-
-        # --- CSV IDs ---
-        if csv_path.exists():
-            try:
-                with open(csv_path, "r", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        if "id" in row:
-                            try:
-                                csv_ids.add(int(row["id"]))
-                            except:
-                                pass
-            except Exception as e:
-                print(f"Error reading CSV: {e}")
-
-        # --- JSON IDs ---
-        if json_path.exists():
-            try:
-                with open(json_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                    # Your format:
-                    # { "segment_ids": [id1, id2, ...] }
-                    if "segment_ids" in data:
-                        for sid in data["segment_ids"]:
-                            try:
-                                json_ids.add(int(sid))
-                            except:
-                                pass
-
-            except Exception as e:
-                print(f"Error reading JSON: {e}")
-
-        # Merge unique
-        total_ids = csv_ids.union(json_ids)
-
-        return len(total_ids)
-
-    async def extract_all_data_async(self, max_segments=100):
-        print(f"Searching for up to {max_segments} segments...")
-        segments = self.search_reunion_segments(max_segments)
-        
+        """Count total processed segments"""
         _, existing_ids = self.load_existing_data()
+        return len(existing_ids)
+    
+    async def extract_all_data_async(self, max_segments=100):
+        """Main extraction pipeline"""
+        print(f"Searching for up to {max_segments} segments...")
         
-        # Filter: not already saved AND not in no-leaderboard list
-        new_segments = [
-            s for s in segments 
-            if s["id"] not in existing_ids 
-            and s["id"] not in self.no_leaderboard_ids
-        ]
+        # Step 1: Find segments (API calls)
+        all_segments = self.search_reunion_segments(max_segments)
         
-        skipped_no_lb = len([s for s in segments if s["id"] in self.no_leaderboard_ids])
-        skipped_existing = len([s for s in segments if s["id"] in existing_ids])
+        # Step 2: Filter already processed
+        _, existing_ids = self.load_existing_data()
+        new_segments = [s for s in all_segments if s["id"] not in existing_ids]
         
-        print(f"Total found: {len(segments)}")
-        print(f"  - Already saved: {skipped_existing}")
-        print(f"  - Known no leaderboard: {skipped_no_lb}")
-        print(f"  - To process: {len(new_segments)}")
+        print(f"\nTotal found: {len(all_segments)}")
+        print(f"  Already saved: {len(all_segments) - len(new_segments)}")
+        print(f"  To process: {len(new_segments)}")
         
         if not new_segments:
             print("No new segments to process!")
             return []
         
+        # Step 3: Process new segments
         await self.init_browser()
-        
         detailed_data = []
-        rate_limited = False
         
         try:
             for i, seg in enumerate(new_segments, 1):
-                print(f"Processing {i}/{len(new_segments)}: {seg.get('name')}")
+                print(f"\nProcessing {i}/{len(new_segments)}: {seg.get('name')}")
                 try:
-                    data = await self.extract_segment_data_async(seg["id"], seg.get("name"))
+                    data = await self.extract_segment_data_async(seg)
                     if data:
                         detailed_data.append(data)
                 except RateLimitException as e:
-                    print(f"\n⚠️  {e}")
+                    print(f"\n⚠️ {e}")
                     print(f"Saving {len(detailed_data)} segments collected so far...")
-                    rate_limited = True
                     break
         finally:
             await self.close_browser()
         
-        if rate_limited:
-            print("\n💡 Tip: Wait 15 minutes and run again to continue.")
-        
         return detailed_data
 
-    
+
 async def main():
-    """Main execution function"""
-    # Setup paths
+    """Main execution with multi-account support"""
     project_root = Path(__file__).resolve().parents[2]
     config_path = project_root / "config.yaml"
     
-    # Load configuration
-    config = load_config(config_path)
+    # Initialize token manager (replaces get_valid_token)
+    token_manager = StravaTokenManager(config_path)
+    print(f"✓ Using account: {token_manager.get_current_account()['name']}")
     
-    # Get Strava token
-    ACCESS_TOKEN = get_valid_token(config_path)
-    if not ACCESS_TOKEN:
-        print("✗ Failed to get valid token. Exiting.")
-        return
-    print("✓ Strava token is valid")
-    
-    # Get AgentQL API key and configure
+    # Load AgentQL config
+    config = token_manager.config
     AGENTQL_API_KEY = config["agentql"]["api_key"]
     setup_agentql(AGENTQL_API_KEY)
     
-    # Initialize extractor
-    extractor = StravaSegmentExtractor(ACCESS_TOKEN, AGENTQL_API_KEY)
+    # Initialize extractor with token manager
+    extractor = StravaSegmentExtractor(token_manager, AGENTQL_API_KEY)
     
-    # Run extraction
+    # Run extraction (rest is the same)
     nb_existing = extractor.number_of_processed_segments()
+    print(f"Already processed segments: {nb_existing}")
+    
     target_segments = nb_existing + 50
+    data = await extractor.extract_all_data_async(max_segments=target_segments)
     
-    data = await run_extraction(extractor, max_segments=target_segments)
+    # Save results
+    extractor.save_data(data)
     
-    # Print summary
+    # Summary
     print(f"\n{'='*50}")
     print(f"EXTRACTION SUMMARY")
     print(f"{'='*50}")
     print(f"New segments extracted: {len(data)}")
-    print(f"Total processed segments: {extractor.number_of_processed_segments()}")
-    print(f"Segments without leaderboard: {len(extractor.no_leaderboard_ids)}")
+    print(f"Total processed: {extractor.number_of_processed_segments()}")
+    
+    # Account usage stats
+    token_manager.print_status()
     print(f"{'='*50}")
 
 
