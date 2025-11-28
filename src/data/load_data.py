@@ -247,40 +247,40 @@ class StravaSegmentExtractor:
         _, existing_ids = self.load_existing_data()
         return len(existing_ids)
     
-    async def extract_all_data_async(self, max_segments=100):
-        """Main extraction pipeline"""
-        print(f"Searching for up to {max_segments} segments...")
+    async def extract_all_data_async(self, max_segments: int):
+        # ... (lines to find segments remain the same)
         
-        all_segments = self.search_reunion_segments(max_segments)
-        
-        _, existing_ids = self.load_existing_data()
-        new_segments = [s for s in all_segments if s["id"] not in existing_ids]
-        
-        print(f"\nTotal found: {len(all_segments)}")
-        print(f"  Already saved: {len(all_segments) - len(new_segments)}")
-        print(f"  To process: {len(new_segments)}")
-        
-        if not new_segments:
-            print("No new segments to process!")
-            return []
-        
-        await self.init_browser()
-        detailed_data = []
+        # detailed_data must be defined outside the try block
+        detailed_data = [] 
         
         try:
-            for i, seg in enumerate(new_segments, 1):
-                print(f"\nProcessing {i}/{len(new_segments)}: {seg.get('name')}")
+            # 1. Search for segments to process (This may also raise RateLimitException)
+            all_segments = self.search_reunion_segments(max_segments)
+            
+            # 2. Process all found segments
+            for i, segment_basic_data in enumerate(all_segments):
+                
+                # Check if we should stop
+                if self.number_of_processed_segments() >= max_segments:
+                    break
+                
+                print(f"\nProcessing {i+1}/{len(all_segments)}: {segment_basic_data['name']}")
+                
                 try:
-                    data = await self.extract_segment_data_async(seg)
+                    # Get segment data (including leaderboard extraction)
+                    data = await self.extract_segment_data_async(segment_basic_data)
+                    
                     if data:
                         detailed_data.append(data)
+                        
                 except RateLimitException as e:
-                    print(f"\n⚠️ {e}")
+                    # When exception is caught here, return the collected data immediately
                     print(f"Saving {len(detailed_data)} segments collected so far...")
-                    break
+                    return detailed_data # <--- CRITICAL FIX: Return collected data before breaking
+                    
         finally:
             await self.close_browser()
-        
+            
         return detailed_data
 
 
