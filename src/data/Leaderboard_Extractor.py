@@ -1,3 +1,9 @@
+"""
+Leaderboard_Extractor.py
+Module pour extraire les temps du leaderboard Strava
+Supporte AgentQL (par défaut) et Crawl4AI (fallback)
+"""
+
 import asyncio
 from bs4 import BeautifulSoup
 
@@ -5,7 +11,7 @@ from bs4 import BeautifulSoup
 class LeaderboardExtractor:
     """Extract leaderboard times from Strava segments"""
     
-    def __init__(self, method="crawl4ai", browser=None):
+    def __init__(self, method="agentql", browser=None):
         """
         Initialize extractor
         
@@ -138,12 +144,25 @@ class LeaderboardExtractor:
                 for row in rows:
                     cells = row.find_all('td')
                     
-                    # Time is usually in last cell
-                    if len(cells) >= 5:
-                        time_text = cells[4].get_text(strip=True)
-                        seconds = self.time_to_seconds(time_text)
-                        if seconds is not None:
-                            times_seconds.append(seconds)
+                    # Search for time in all cells (flexible approach)
+                    time_found = None
+                    for cell in cells:
+                        text = cell.get_text(strip=True)
+                        # Look for time patterns:
+                        # 1. Contains : (like 5:24 or 1:23:45) but not / (not speed like 5:24/km)
+                        # 2. Ends with 's' and is short (like 44s, 51s)
+                        is_colon_time = ':' in text and '/' not in text and len(text) < 10
+                        is_seconds_time = text.endswith('s') and len(text) < 6 and text[:-1].replace(':', '').isdigit()
+                        
+                        if is_colon_time or is_seconds_time:
+                            # Found a time, convert it
+                            seconds = self.time_to_seconds(text)
+                            if seconds is not None:
+                                time_found = seconds
+                                break
+                    
+                    if time_found:
+                        times_seconds.append(time_found)
                 
                 return times_seconds
                 

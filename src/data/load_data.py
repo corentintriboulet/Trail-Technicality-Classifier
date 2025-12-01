@@ -6,7 +6,6 @@ import os
 import asyncio
 import agentql
 import pandas as pd
-from playwright.async_api import async_playwright
 from Strava_Token_Manager import StravaTokenManager, make_strava_request_with_retry, RateLimitException
 from Leaderboard_Extractor import LeaderboardExtractor  # ← Import the new class
 
@@ -30,8 +29,7 @@ class StravaSegmentExtractor:
         self.raw_folder = self.project_root / "data" / "raw"
         os.makedirs(self.raw_folder, exist_ok=True)
         
-        self.browser = None
-        self.playwright = None
+
         self.leaderboard_extractor = None  # ← Will be initialized with browser
     
     def _make_api_request(self, url, params=None):
@@ -76,25 +74,17 @@ class StravaSegmentExtractor:
         return None
     
     async def init_browser(self):
-        """Initialize Playwright browser and LeaderboardExtractor"""
-        if not self.browser:
-            self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=True)
-            
-            # ← Initialize LeaderboardExtractor with browser
+        """Initialize LeaderboardExtractor with Crawl4AI (no Playwright needed)"""
+        if not self.leaderboard_extractor:
+            # Use Crawl4AI by default (standalone, no browser needed)
             self.leaderboard_extractor = LeaderboardExtractor(
-                method="agentql",
-                browser=self.browser
+                method="crawl4ai",
+                browser=None
             )
     
     async def close_browser(self):
-        """Close Playwright browser"""
-        if self.browser:
-            await self.browser.close()
-            await self.playwright.stop()
-            self.browser = None
-            self.playwright = None
-            self.leaderboard_extractor = None
+        """Close LeaderboardExtractor"""
+        self.leaderboard_extractor = None
     
     async def extract_segment_data_async(self, segment_basic_data):                                                             
         """Extract full segment data: scrape leaderboard + get details + streams"""
@@ -152,7 +142,7 @@ class StravaSegmentExtractor:
 
         all_segments = []
         segment_ids = set()
-        grid_size = 7
+        grid_size = 5
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
@@ -248,39 +238,47 @@ class StravaSegmentExtractor:
         return len(existing_ids)
     
     async def extract_all_data_async(self, max_segments: int):
-        # ... (lines to find segments remain the same)
+        """Main extraction pipeline"""
+        print(f"Searching for up to {max_segments} segments...")
         
-        # detailed_data must be defined outside the try block
-        detailed_data = [] 
+        # Step 1: Find segments (API calls - may raise RateLimitException)
+        all_segments = self.search_reunion_segments(max_segments)
+        
+        # Step 2: Filter already processed
+        _, existing_ids = self.load_existing_data()
+        new_segments = [s for s in all_segments if s["id"] not in existing_ids]
+        
+        print(f"\nTotal found: {len(all_segments)}")
+        print(f"  Already saved: {len(all_segments) - len(new_segments)}")
+        print(f"  To process: {len(new_segments)}")
+        
+        if not new_segments:
+            print("No new segments to process!")
+            return []
+        
+        # ← FIX: Initialize browser BEFORE processing
+        await self.init_browser()
+        
+        detailed_data = []
         
         try:
-            # 1. Search for segments to process (This may also raise RateLimitException)
-            all_segments = self.search_reunion_segments(max_segments)
-            
-            # 2. Process all found segments
-            for i, segment_basic_data in enumerate(all_segments):
-                
-                # Check if we should stop
-                if self.number_of_processed_segments() >= max_segments:
-                    break
-                
-                print(f"\nProcessing {i+1}/{len(all_segments)}: {segment_basic_data['name']}")
+            # Step 3: Process new segments
+            for i, seg in enumerate(new_segments, 1):
+                print(f"\nProcessing {i}/{len(new_segments)}: {seg.get('name')}")
                 
                 try:
-                    # Get segment data (including leaderboard extraction)
-                    data = await self.extract_segment_data_async(segment_basic_data)
-                    
+                    data = await self.extract_segment_data_async(seg)
                     if data:
                         detailed_data.append(data)
                         
                 except RateLimitException as e:
-                    # When exception is caught here, return the collected data immediately
+                    print(f"\n⚠️ {e}")
                     print(f"Saving {len(detailed_data)} segments collected so far...")
-                    return detailed_data # <--- CRITICAL FIX: Return collected data before breaking
+                    break  # Exit loop but save data
                     
         finally:
             await self.close_browser()
-            
+        
         return detailed_data
 
 
@@ -301,7 +299,7 @@ async def main():
     nb_existing = extractor.number_of_processed_segments()
     print(f"Already processed segments: {nb_existing}")
     
-    target_segments = nb_existing + 50
+    target_segments = nb_existing + 250
     
     # Initialize data to an empty list in case the exception happens immediately
     data = [] 
