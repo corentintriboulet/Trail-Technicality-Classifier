@@ -292,7 +292,7 @@ class SegmentSlicer:
         
         # Compter les virages serrés seulement pour les descentes catégorisées
         sharp_turns = 0
-        if segment_type == "descent" and coordinates:
+        if segment_type == "descent" and coordinates is not None and len(coordinates) > 0:
             sharp_turns = self._count_sharp_turns(segment_df, coordinates)
         
         descents_list.append({
@@ -364,7 +364,7 @@ class SegmentSlicer:
         Un virage serré est défini comme un changement d'angle > 60° sur < 50m
         """
         
-        if not coordinates or len(segment_df) < 3:
+        if coordinates is None or len(coordinates) == 0 or len(segment_df) < 3:
             return 0
         
         sharp_turns = 0
