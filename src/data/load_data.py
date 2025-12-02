@@ -142,7 +142,7 @@ class StravaSegmentExtractor:
 
         all_segments = []
         segment_ids = set()
-        grid_size = 13
+        grid_size = 3
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
