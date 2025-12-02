@@ -4,7 +4,6 @@ import time
 import yaml
 import os
 import asyncio
-import agentql
 import pandas as pd
 from Strava_Token_Manager import StravaTokenManager, make_strava_request_with_retry, RateLimitException
 from Leaderboard_Extractor import LeaderboardExtractor  
@@ -16,14 +15,10 @@ def load_config(config_path):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
-def setup_agentql(api_key):
-    agentql.configure(api_key=api_key)
-    print("✓ AgentQL configured")
 
 class StravaSegmentExtractor:
-    def __init__(self, token_manager, agentql_api_key):
+    def __init__(self, token_manager):
         self.token_manager = token_manager
-        self.agentql_api_key = agentql_api_key
         self.base_url = "https://www.strava.com/api/v3"
         self.project_root = Path(__file__).resolve().parents[2]
         self.raw_folder = self.project_root / "data" / "raw"
@@ -291,10 +286,9 @@ async def main():
     print(f"✓ Using account: {token_manager.get_current_account()['name']}")
     
     config = token_manager.config
-    AGENTQL_API_KEY = config["agentql"]["api_key"]
-    setup_agentql(AGENTQL_API_KEY)
     
-    extractor = StravaSegmentExtractor(token_manager, AGENTQL_API_KEY)
+    
+    extractor = StravaSegmentExtractor(token_manager)
     
     nb_existing = extractor.number_of_processed_segments()
     print(f"Already processed segments: {nb_existing}")
