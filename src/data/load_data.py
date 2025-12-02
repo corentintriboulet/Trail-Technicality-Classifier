@@ -7,7 +7,7 @@ import asyncio
 import agentql
 import pandas as pd
 from Strava_Token_Manager import StravaTokenManager, make_strava_request_with_retry, RateLimitException
-from Leaderboard_Extractor import LeaderboardExtractor  # ← Import the new class
+from Leaderboard_Extractor import LeaderboardExtractor  
 
 
 
@@ -142,7 +142,7 @@ class StravaSegmentExtractor:
 
         all_segments = []
         segment_ids = set()
-        grid_size = 5
+        grid_size = 13
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
