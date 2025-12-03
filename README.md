@@ -8,7 +8,7 @@
 
 ---
 
-### Difficulty Scale
+### Technicality Scale
 
 | Score | Surface Type       | Description                     |
 |-------|--------------------|---------------------------------|
@@ -23,7 +23,7 @@
 ### Repository Structure
 
 ````bash
-Trail-Difficulty-Classifier/
+Trail-Technicality-Classifier/
 ├── data/
 │   ├── old/                # Old datasets
 │   ├── processed/          # Cleaned datasets (e.g., segments_manually_labeled.csv)
