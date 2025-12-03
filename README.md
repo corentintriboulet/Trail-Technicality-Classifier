@@ -25,10 +25,10 @@
 ````bash
 Trail-Difficulty-Classifier/
 ├── data/
+│   ├── old/                # Old datasets
 │   ├── processed/          # Cleaned datasets (e.g., segments_manually_labeled.csv)
 │   └── raw/                # Original Strava data (ignored by Git)
-├── notebooks/
-│   └── explorations.ipynb  # EDA and baseline models
+├── notebooks/              # First explorations
 └── src/
     ├── data/               # Data loading scripts
     └── models/             # ML code
