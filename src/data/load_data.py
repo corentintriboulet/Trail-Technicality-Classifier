@@ -137,11 +137,11 @@ class StravaSegmentExtractor:
 
         all_segments = []
         segment_ids = set()
-        grid_size = 3
+        grid_size = 16
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
-        for activity_type in ["riding", "running"]:
+        for activity_type in ["riding", "running"]: #["riding", "running"]
             print(f"Searching for {activity_type} segments...")
             for i in range(grid_size):
                 for j in range(grid_size):
