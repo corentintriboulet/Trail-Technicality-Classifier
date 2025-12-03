@@ -1,6 +1,6 @@
-# Trail-Difficulty-Classifier
+# Trail-Technicality-Classifier
 
-**Classifies trail difficulty (1-5) using Strava segment data.**
+**Classifies trail technicality (1-5) using Strava segment data.**
 
 ### Why?
 - Help cyclists/runners pick trails matching their skill level or avoid trails that are too difficult
