@@ -1,0 +1,54 @@
+segment_id,name,T1_confidence_score,is_T1_predicted,is_T1_manual
+26467595,Spe4 ram pt2,5.375,False,False
+3896321,faux plat station St Gilles,6.25,False,True
+22847565,Petit-Séré,4.75,False,True
+21030026,RUE RAPHAEL DOUYERE,5.5,False,True
+22708090,Pente Maingard (Approximatif) D3,5.375,False,True
+20791099,Montée la croie,5.75,False,True
+4002331,Route Forestière 64 des Camélias Climb,5.499999999999999,False,False
+33053358,Chemin Cent Gaulette,5.75,False,True
+25021077,Les Lataniers,6.499999999999999,False,False
+14031806,Cote lycée Bellepierre,4.5,False,True
+23331458,Monrée route des ramparts,5.5,False,True
+18850640,Sainte Rose jusqu'à piton,5.375,False,True
+26052767,speed corbeil,5.625,False,True
+9083622,Dassy,4.625,False,True
+27179013,Rdp Stella- Arret de Bus ,6.375,False,True
+12389853,Montee Bassin Martin,5.625,False,True
+20467002,Route Vaudeville croisée ferme du Jar,5.0,False,True
+21898469,Chemin avant Monté les Makes .,4.75,False,True
+14062595,A FOND VERS LA STATION 24H PRIMA,6.5,False,True
+11976560,Villentroy,5.0,False,True
+18739062,ROUTE FORESTIERE MAIDO,5.0,False,False
+31739890,Chemin Rland Fabien Hoarau,2.0,False,True
+6108450,Sentier de la Chapelle Climb,2.0,False,False
+21880309,DH sentier Lygdamis,2.0,False,False
+26671027,DH 1 sentier scout,2.0,False,False
+19128961,fin sentier bananes,2.0,False,False
+4085011,Chemin du Dimitile Climb,1.5,False,False
+23191408,Début sentier-cote béton 1,1.5,False,False
+18107139,XC déchetterie / Chemin Pontiac,2.0,False,False
+16971361,sentier la croix,1.5,False,False
+16462236,Chemin Safer Grand Coude,2.0,False,True
+8506922,,NaN,True,True
+16141737,,NaN,False,True
+24095809,,NaN,False,True
+8151165,,NaN,True,True
+5942362,,NaN,False,True
+11202685,,NaN,True,True
+17087706,,NaN,True,True
+18036527,,NaN,True,True
+12928902,,NaN,True,True
+16903143,,NaN,False,True
+5103103,,NaN,False,True
+10729105,,NaN,False,True
+13728085,,NaN,False,True
+6405426,,NaN,False,True
+17258588,,NaN,True,True
+9827970,,NaN,False,True
+19358372,,NaN,False,True
+15437615,,NaN,False,True
+17073484,,NaN,False,True
+9648074,,NaN,False,True
+16876091,,NaN,False,True
+13531564,,NaN,True,True
