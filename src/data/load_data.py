@@ -126,7 +126,7 @@ class StravaSegmentExtractor:
             "coordinates": streams.get("latlng", {}).get("data", []) if streams else []
         }
     
-    def search_reunion_segments(self, max_segments=100):
+    def search_segments(self, max_segments=100):
         """Search for segments in Reunion Island area"""
         lat_min, lat_max = -21.3980463, -20.8369424
         lng_min, lng_max = 55.1707468, 55.9040842
@@ -141,7 +141,7 @@ class StravaSegmentExtractor:
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
-        for activity_type in ["riding", "running"]: #["riding", "running"]
+        for activity_type in ["running"]: #["riding", "running"]
             print(f"Searching for {activity_type} segments...")
             for i in range(grid_size):
                 for j in range(grid_size):
@@ -237,7 +237,7 @@ class StravaSegmentExtractor:
         print(f"Searching for up to {max_segments} segments...")
         
         # Step 1: Find segments (API calls - may raise RateLimitException)
-        all_segments = self.search_reunion_segments(max_segments)
+        all_segments = self.search_segments(max_segments)
         
         # Step 2: Filter already processed
         _, existing_ids = self.load_existing_data()
