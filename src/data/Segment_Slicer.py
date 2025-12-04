@@ -4,7 +4,7 @@ import pandas as pd
 class SegmentSlicer:
     def __init__(self):
         pass
-    def cut_segment(self, altitude_profile, distance_profile, coordinates=None,
+    def cut_segment(self, altitude_profile, distance_profile, coordinates=None, 
                     smooth_window=10):
         """
         Découpe un profil en 5 types de sections:
