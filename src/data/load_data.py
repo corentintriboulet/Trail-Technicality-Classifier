@@ -128,16 +128,17 @@ class StravaSegmentExtractor:
     
     def search_segments(self, max_segments=100):
         """Search for segments in Reunion Island area"""
-        lat_min, lat_max = -21.3980463, -20.8369424
-        lng_min, lng_max = 55.1707468, 55.9040842
+        # Reunion Island bounds
+        #lat_min, lat_max = -21.3980463, -20.8369424
+        #lng_min, lng_max = 55.1707468, 55.9040842
 
         #La bretagne
-        #lat_min, lat_max = -21.3980463, -20.8369424
-        #lng_min, lng_max = 55.4785652, 55.5090946
+        lat_min, lat_max = -21.3980463, -20.8369424
+        lng_min, lng_max = 55.4785652, 55.5090946
 
         all_segments = []
         segment_ids = set()
-        grid_size = 18
+        grid_size = 20
         lat_step = (lat_max - lat_min) / grid_size
         lng_step = (lng_max - lng_min) / grid_size
         
