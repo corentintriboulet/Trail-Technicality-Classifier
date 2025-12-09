@@ -35,8 +35,8 @@ class SegmentSlicer:
         min_length, min_elev = self._get_adaptive_thresholds(total_distance)
         
         # Détection des montées et descentes
-        climbs = self._detect_slopes(df, direction='climb', min_length, min_elev)
-        descents = self._detect_slopes(df, direction='descent', min_length, min_elev, coordinates)
+        climbs = self._detect_slopes(df, 'climb', min_length, min_elev)
+        descents = self._detect_slopes(df, 'descent', min_length, min_elev, coordinates)
         
         # Fusion et tri
         all_segments = climbs + descents
@@ -74,11 +74,11 @@ class SegmentSlicer:
         if total_distance < 1000:  # < 1km
             min_length = 50   # Sections de 50m minimum
             min_elev = 10     # 10m de dénivelé minimum
-        elif total_distance < 5000:  # < 5km
-            min_length = 150
+        elif total_distance < 4000:  # < 4km
+            min_length = 100
             min_elev = 15
-        else:  # > 5km
-            min_length = 300
+        else:  # > 4km
+            min_length = 200
             min_elev = 20
         
         return min_length, min_elev
