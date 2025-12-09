@@ -1,185 +1,205 @@
 import numpy as np
 import pandas as pd
 
+
 class SegmentSlicer:
+    """
+    Découpe un profil d'altitude en 5 types de sections :
+    - flat : plat (< 1.5% de pente)
+    - uphill : montée non catégorisée (1.5-3%)
+    - climb : montée catégorisée Strava (Cat 4 à HC)
+    - downhill : descente non catégorisée (-1.5% à -3%)
+    - descent : descente catégorisée (avec comptage de virages)
+    """
+    
     def __init__(self):
         pass
+    
     def cut_segment(self, altitude_profile, distance_profile, coordinates=None, 
                     smooth_window=10):
         """
-        Découpe un profil en 5 types de sections:
-        - flat: plat
-        - uphill: montée non catégorisée
-        - climb: montée catégorisée (Cat 4 à HC)
-        - downhill: descente non catégorisée
-        - descent: descente catégorisée (basée sur longueur/pente)
+        Découpe le profil en sections significatives.
+        Adapte automatiquement la longueur minimale selon la distance totale.
         """
+        # Créer DataFrame optimisé
+        df = self._create_dataframe(altitude_profile, distance_profile, coordinates)
         
-        # Gérer les coordonnées (qui peuvent être des arrays numpy)
-        has_coords = coordinates is not None
-        if has_coords:
+        if len(df) < 2:
+            return []
+        
+        # Calcul vectorisé des grades et lissage
+        df = self._compute_grades_and_smooth(df, smooth_window)
+        
+        # Adapter les seuils selon la longueur du segment
+        total_distance = df['distance'].iloc[-1]
+        min_length, min_elev = self._get_adaptive_thresholds(total_distance)
+        
+        # Détection des montées et descentes
+        climbs = self._detect_slopes(df, direction='climb', min_length, min_elev)
+        descents = self._detect_slopes(df, direction='descent', min_length, min_elev, coordinates)
+        
+        # Fusion et tri
+        all_segments = climbs + descents
+        all_segments.sort(key=lambda x: x['start_distance'])
+        
+        # Remplir les trous
+        return self._fill_gaps(df, all_segments)
+    
+    def _create_dataframe(self, altitude_profile, distance_profile, coordinates):
+        """Crée le DataFrame de manière optimisée"""
+        # Gérer les coordonnées (numpy arrays)
+        if coordinates is not None:
             try:
-                lat_coords = [float(c[0]) for c in coordinates]
-                lon_coords = [float(c[1]) for c in coordinates]
+                lat_coords = np.array([float(c[0]) for c in coordinates])
+                lon_coords = np.array([float(c[1]) for c in coordinates])
             except:
-                has_coords = False
-                lat_coords = [0] * len(altitude_profile)
-                lon_coords = [0] * len(altitude_profile)
+                lat_coords = np.zeros(len(altitude_profile))
+                lon_coords = np.zeros(len(altitude_profile))
         else:
-            lat_coords = [0] * len(altitude_profile)
-            lon_coords = [0] * len(altitude_profile)
+            lat_coords = np.zeros(len(altitude_profile))
+            lon_coords = np.zeros(len(altitude_profile))
         
-        # Créer un DataFrame pour faciliter le traitement
-        df = pd.DataFrame({
+        return pd.DataFrame({
             'ele': altitude_profile,
             'distance': distance_profile,
             'lat': lat_coords,
             'lon': lon_coords
         })
+    
+    def _get_adaptive_thresholds(self, total_distance):
+        """
+        Adapte les seuils de détection selon la longueur totale du segment.
+        Pour les segments < 1km : plus de détails avec des sections plus courtes.
+        """
+        if total_distance < 1000:  # < 1km
+            min_length = 50   # Sections de 50m minimum
+            min_elev = 10     # 10m de dénivelé minimum
+        elif total_distance < 5000:  # < 5km
+            min_length = 150
+            min_elev = 15
+        else:  # > 5km
+            min_length = 300
+            min_elev = 20
         
-        if len(df) < 2:
-            return []
-        
-        # Calculer les grades point par point
-        df = self._calculate_grades(df)
-        
-        # Appliquer le lissage
-        df = self._apply_smoothing(df, smooth_window)
-        
-        # Détection des segments significatifs
-        climbs = self._detect_climbs(df)
-        descents = self._detect_descents(df, coordinates)
-        
-        # Fusionner et trier tous les segments
-        all_segments = climbs + descents
-        all_segments.sort(key=lambda x: x['start_distance'])
-        
-        # Remplir les trous avec des sections "flat", "uphill" ou "downhill"
-        filled_segments = self._fill_gaps(df, all_segments)
-        
-        return filled_segments
-
-    def _calculate_grades(self, df):
-        """Calcule les grades entre chaque point"""
+        return min_length, min_elev
+    
+    def _compute_grades_and_smooth(self, df, window):
+        """Calcul vectorisé des grades et lissage (plus rapide)"""
+        # Calcul vectorisé
         dist_diff = df['distance'].diff()
         elev_diff = df['ele'].diff()
         
-        df['grade'] = np.where(
-            dist_diff > 0,
-            (elev_diff / dist_diff) * 100,
-            0
-        )
+        df['grade'] = np.where(dist_diff > 0, (elev_diff / dist_diff) * 100, 0)
         
-        return df
-
-    def _apply_smoothing(self, df, window):
-        """Applique un lissage sur les grades"""
-        window_size = min(window, len(df))
+        # Lissage
+        window_size = min(max(3, window), len(df))
         if window_size % 2 == 0:
             window_size += 1
         
         df['plot_grade'] = df['grade'].rolling(
-            window=window_size, 
-            center=True, 
-            min_periods=1
+            window=window_size, center=True, min_periods=1
         ).mean()
         
         return df
-
-    def _detect_climbs(self, df, 
-                    start_threshold=3.0,
-                    end_threshold=1.5,
-                    max_pause_length_m=200,
-                    max_pause_descent_m=15,
-                    min_length_m=300,
-                    min_gain_m=20):
+    
+    def _detect_slopes(self, df, direction='climb', min_length=300, min_elev=20, coordinates=None):
         """
-        Détecte les montées significatives (climb) et non catégorisées (uphill)
-        Retourne une liste de dictionnaires avec les caractéristiques de chaque montée
+        Détection unifiée des montées et descentes (code simplifié).
+        direction: 'climb' ou 'descent'
         """
+        # Configuration selon la direction
+        if direction == 'climb':
+            start_thresh = 3.0
+            end_thresh = 1.5
+            sign = 1
+        else:  # descent
+            start_thresh = -3.0
+            end_thresh = -1.5
+            sign = -1
         
-        climbs = []
+        slopes = []
         state = "SEARCHING"
         start_idx = 0
-        segment_points = []
+        points = []
         
         for i in range(1, len(df)):
-            point = df.iloc[i]
-            slope = point['plot_grade']
-            elev_diff = df['ele'].iloc[i] - df['ele'].iloc[i-1]
-            dist_diff = point['distance'] - df['distance'].iloc[i-1]
+            slope = df.iloc[i]['plot_grade'] * sign
+            elev_diff = (df['ele'].iloc[i] - df['ele'].iloc[i-1]) * sign
+            dist_diff = df['distance'].iloc[i] - df['distance'].iloc[i-1]
             
             if state == "SEARCHING":
-                if slope >= start_threshold:
-                    state = "IN_CLIMB"
+                if slope >= start_thresh * sign:
+                    state = "IN_SLOPE"
                     start_idx = i - 1
-                    segment_points = [df.iloc[i-1].to_dict(), point.to_dict()]
-                    
-            elif state == "IN_CLIMB":
-                if slope >= end_threshold:
-                    segment_points.append(point.to_dict())
+                    points = [i-1, i]
+            
+            elif state == "IN_SLOPE":
+                if slope >= end_thresh * sign:
+                    points.append(i)
                 else:
-                    state = "EVALUATING_PAUSE"
-                    pause_start_idx = i - 1
-                    pause_length = 0
-                    pause_descent = 0
-                    segment_points.append(point.to_dict())
-                    
-            elif state == "EVALUATING_PAUSE":
-                segment_points.append(point.to_dict())
-                pause_length += dist_diff
-                
+                    state = "PAUSE"
+                    pause_idx = i - 1
+                    pause_dist = 0
+                    pause_elev = 0
+                    points.append(i)
+            
+            elif state == "PAUSE":
+                points.append(i)
+                pause_dist += dist_diff
                 if elev_diff < 0:
-                    pause_descent += abs(elev_diff)
+                    pause_elev += abs(elev_diff)
                 
-                # La montée reprend
-                if slope >= end_threshold:
-                    state = "IN_CLIMB"
-                
-                # La pause est trop longue ou descend trop
-                elif pause_length > max_pause_length_m or pause_descent > max_pause_descent_m:
-                    # Sauvegarder le segment avant la pause
-                    segment_df = pd.DataFrame(segment_points[:-(i - pause_start_idx)])
-                    self._validate_and_append_climb(climbs, segment_df, start_idx, 
-                                            min_length_m, min_gain_m)
-                    
+                if slope >= end_thresh * sign:
+                    state = "IN_SLOPE"
+                elif pause_dist > 200 or pause_elev > 15:
+                    # Fin de la pente, valider et sauvegarder
+                    segment_df = df.iloc[points[:-(i - pause_idx)]]
+                    self._validate_and_append(slopes, segment_df, direction, 
+                                             min_length, min_elev, coordinates)
                     state = "SEARCHING"
-                    segment_points = []
+                    points = []
         
-        # Dernière montée en cours
-        if state in ["IN_CLIMB", "EVALUATING_PAUSE"] and segment_points:
-            segment_df = pd.DataFrame(segment_points)
-            self._validate_and_append_climb(climbs, segment_df, start_idx, 
-                                    min_length_m, min_gain_m)
+        # Dernière pente en cours
+        if state in ["IN_SLOPE", "PAUSE"] and len(points) > 0:
+            segment_df = df.iloc[points]
+            self._validate_and_append(slopes, segment_df, direction, 
+                                     min_length, min_elev, coordinates)
         
-        return climbs
-
-    def _validate_and_append_climb(self, climbs_list, segment_df, start_idx, 
-                                min_length_m, min_gain_m):
-        """Valide et ajoute une montée à la liste"""
-        
+        return slopes
+    
+    def _validate_and_append(self, slopes_list, segment_df, direction, 
+                            min_length, min_elev, coordinates):
+        """Valide et ajoute une montée/descente à la liste"""
         if segment_df.empty or len(segment_df) < 2:
             return
         
         length = segment_df['distance'].iloc[-1] - segment_df['distance'].iloc[0]
-        gain = segment_df[segment_df['ele'].diff() > 0]['ele'].diff().sum()
         
-        if pd.isna(gain):
-            gain = 0
+        if direction == 'climb':
+            elev_change = segment_df[segment_df['ele'].diff() > 0]['ele'].diff().sum()
+            if pd.isna(elev_change):
+                elev_change = 0
+            avg_slope = (elev_change / length) * 100 if length > 0 else 0
+        else:
+            elev_change = abs(segment_df[segment_df['ele'].diff() < 0]['ele'].diff().sum())
+            if pd.isna(elev_change):
+                elev_change = 0
+            avg_slope = -(elev_change / length) * 100 if length > 0 else 0
         
-        if length < min_length_m or gain < min_gain_m:
+        if length < min_length or elev_change < min_elev:
             return
         
-        avg_slope = (gain / length) * 100 if length > 0 else 0
-        max_grade = segment_df['plot_grade'].max()
+        # Classification
+        if direction == 'climb':
+            category = self._classify_strava(length, avg_slope)
+            segment_type = "climb" if category != "Uncategorized" else "uphill"
+            sharp_turns = 0
+        else:
+            category = self._classify_strava(length, abs(avg_slope))
+            segment_type = "descent" if category != "Uncategorized" else "downhill"
+            sharp_turns = self._count_sharp_turns(segment_df, coordinates) if segment_type == "descent" else 0
         
-        # Classifier selon Strava
-        category = self._classify_climb_strava(length, avg_slope)
-        
-        # Déterminer le type: "climb" (catégorisé) ou "uphill" (non catégorisé)
-        segment_type = "climb" if category != "Uncategorized" else "uphill"
-        
-        climbs_list.append({
+        slopes_list.append({
             'type': segment_type,
             'category': category,
             'start_distance': segment_df['distance'].iloc[0],
@@ -187,137 +207,20 @@ class SegmentSlicer:
             'distance': length,
             'start_altitude': segment_df['ele'].iloc[0],
             'end_altitude': segment_df['ele'].iloc[-1],
-            'elevation_gain': gain,
-            'elevation_loss': 0,
-            'elevation_change': gain,
-            'grade': avg_slope,
-            'max_grade': max_grade,
-            'min_grade': segment_df['plot_grade'].min(),
-            'grade_variance': segment_df['plot_grade'].var(),
-            'start_idx': start_idx,
-            'end_idx': start_idx + len(segment_df) - 1
-        })
-
-    def _detect_descents(self, df, coordinates=None,
-                        start_threshold=-3.0,
-                        end_threshold=-1.5,
-                        max_pause_length_m=200,
-                        max_pause_ascent_m=15,
-                        min_length_m=300,
-                        min_loss_m=20):
-        """
-        Détecte les descentes significatives (descent) et non catégorisées (downhill)
-        Ajoute le nombre de virages serrés pour les descentes catégorisées
-        """
-        
-        descents = []
-        state = "SEARCHING"
-        start_idx = 0
-        segment_points = []
-        
-        for i in range(1, len(df)):
-            point = df.iloc[i]
-            slope = point['plot_grade']
-            elev_diff = df['ele'].iloc[i] - df['ele'].iloc[i-1]
-            dist_diff = point['distance'] - df['distance'].iloc[i-1]
-            
-            if state == "SEARCHING":
-                if slope <= start_threshold:
-                    state = "IN_DESCENT"
-                    start_idx = i - 1
-                    segment_points = [df.iloc[i-1].to_dict(), point.to_dict()]
-                    
-            elif state == "IN_DESCENT":
-                if slope <= end_threshold:
-                    segment_points.append(point.to_dict())
-                else:
-                    state = "EVALUATING_PAUSE"
-                    pause_start_idx = i - 1
-                    pause_length = 0
-                    pause_ascent = 0
-                    segment_points.append(point.to_dict())
-                    
-            elif state == "EVALUATING_PAUSE":
-                segment_points.append(point.to_dict())
-                pause_length += dist_diff
-                
-                if elev_diff > 0:
-                    pause_ascent += elev_diff
-                
-                # La descente reprend
-                if slope <= end_threshold:
-                    state = "IN_DESCENT"
-                
-                # La pause est trop longue ou monte trop
-                elif pause_length > max_pause_length_m or pause_ascent > max_pause_ascent_m:
-                    segment_df = pd.DataFrame(segment_points[:-(i - pause_start_idx)])
-                    self._validate_and_append_descent(descents, segment_df, start_idx, 
-                                                min_length_m, min_loss_m, coordinates)
-                    
-                    state = "SEARCHING"
-                    segment_points = []
-        
-        # Dernière descente en cours
-        if state in ["IN_DESCENT", "EVALUATING_PAUSE"] and segment_points:
-            segment_df = pd.DataFrame(segment_points)
-            self._validate_and_append_descent(descents, segment_df, start_idx, 
-                                        min_length_m, min_loss_m, coordinates)
-        
-        return descents
-
-    def _validate_and_append_descent(self, descents_list, segment_df, start_idx, 
-                                    min_length_m, min_loss_m, coordinates):
-        """Valide et ajoute une descente à la liste"""
-        
-        if segment_df.empty or len(segment_df) < 2:
-            return
-        
-        length = segment_df['distance'].iloc[-1] - segment_df['distance'].iloc[0]
-        loss = abs(segment_df[segment_df['ele'].diff() < 0]['ele'].diff().sum())
-        
-        if pd.isna(loss):
-            loss = 0
-        
-        if length < min_length_m or loss < min_loss_m:
-            return
-        
-        avg_slope = -(loss / length) * 100 if length > 0 else 0
-        min_grade = segment_df['plot_grade'].min()
-        
-        # Classifier la descente (similaire aux montées)
-        category = self._classify_descent(length, abs(avg_slope))
-        
-        # Déterminer le type
-        segment_type = "descent" if category != "Uncategorized" else "downhill"
-        
-        # Compter les virages serrés seulement pour les descentes catégorisées
-        sharp_turns = 0
-        if segment_type == "descent" and coordinates is not None and len(coordinates) > 0:
-            sharp_turns = self._count_sharp_turns(segment_df, coordinates)
-        
-        descents_list.append({
-            'type': segment_type,
-            'category': category,
-            'start_distance': segment_df['distance'].iloc[0],
-            'end_distance': segment_df['distance'].iloc[-1],
-            'distance': length,
-            'start_altitude': segment_df['ele'].iloc[0],
-            'end_altitude': segment_df['ele'].iloc[-1],
-            'elevation_gain': 0,
-            'elevation_loss': loss,
-            'elevation_change': -loss,
+            'elevation_gain': elev_change if direction == 'climb' else 0,
+            'elevation_loss': elev_change if direction == 'descent' else 0,
+            'elevation_change': elev_change if direction == 'climb' else -elev_change,
             'grade': avg_slope,
             'max_grade': segment_df['plot_grade'].max(),
-            'min_grade': min_grade,
+            'min_grade': segment_df['plot_grade'].min(),
             'grade_variance': segment_df['plot_grade'].var(),
-            'sharp_turns': sharp_turns if segment_type == "descent" else 0,
-            'start_idx': start_idx,
-            'end_idx': start_idx + len(segment_df) - 1
+            'sharp_turns': sharp_turns,
+            'start_idx': segment_df.index[0],
+            'end_idx': segment_df.index[-1]
         })
-
-    def _classify_climb_strava(self, length_m, avg_slope):
-        """Classification Strava pour les montées"""
-        
+    
+    def _classify_strava(self, length_m, avg_slope):
+        """Classification Strava unifiée (montées et descentes)"""
         if avg_slope < 3.0:
             return "Uncategorized"
         
@@ -335,175 +238,120 @@ class SegmentSlicer:
             return "Cat 4"
         else:
             return "Uncategorized"
-
-    def _classify_descent(self, length_m, avg_slope):
-        """
-        Classification pour les descentes (similaire aux montées)
-        Basée sur longueur et pente moyenne
-        """
-        
-        if avg_slope < 3.0:
-            return "Uncategorized"
-        
-        score = length_m * avg_slope
-        
-        if score >= 64000:
-            return "Major Descent"
-        elif score >= 32000:
-            return "Significant Descent"
-        elif score >= 16000:
-            return "Moderate Descent"
-        elif score >= 8000:
-            return "Minor Descent"
-        else:
-            return "Uncategorized"
-
+    
     def _count_sharp_turns(self, segment_df, coordinates):
-        """
-        Compte les virages serrés dans une descente
-        Un virage serré est défini comme un changement d'angle > 60° sur < 50m
-        """
-        
-        if coordinates is None or len(coordinates) == 0 or len(segment_df) < 3:
+        """Compte les virages serrés (angle > 60° sur < 50m)"""
+        if coordinates is None or len(segment_df) < 3:
             return 0
         
-        sharp_turns = 0
-        
-        # Extraire les coordonnées du segment
-        start_idx = segment_df.index[0]
-        end_idx = segment_df.index[-1]
-        
-        if end_idx >= len(coordinates) or start_idx >= len(coordinates):
-            return 0
-        
-        segment_coords = coordinates[start_idx:end_idx+1]
-        
-        for i in range(1, len(segment_coords) - 1):
-            # Calculer l'angle entre 3 points consécutifs
-            angle = self._calculate_angle(
-                segment_coords[i-1],
-                segment_coords[i],
-                segment_coords[i+1]
-            )
+        try:
+            start_idx = segment_df.index[0]
+            end_idx = segment_df.index[-1]
             
-            # Distance entre les points
-            if i < len(segment_df) - 1:
-                dist = segment_df['distance'].iloc[i+1] - segment_df['distance'].iloc[i-1]
+            if end_idx >= len(coordinates) or start_idx >= len(coordinates):
+                return 0
+            
+            coords = coordinates[start_idx:end_idx+1]
+            sharp_turns = 0
+            
+            for i in range(1, len(coords) - 1):
+                # Vecteurs entre 3 points consécutifs
+                v1 = np.array([float(coords[i-1][0]) - float(coords[i][0]),
+                              float(coords[i-1][1]) - float(coords[i][1])])
+                v2 = np.array([float(coords[i+1][0]) - float(coords[i][0]),
+                              float(coords[i+1][1]) - float(coords[i][1])])
                 
-                # Virage serré: angle > 60° sur moins de 50m
-                if angle > 60 and dist < 50:
-                    sharp_turns += 1
-        
-        return sharp_turns
-
-    def _calculate_angle(self, p1, p2, p3):
-        """
-        Calcule l'angle formé par 3 points (en degrés)
-        p1, p2, p3 sont des tuples (lat, lon)
-        """
-        
-        # Vecteurs
-        v1 = (p1[0] - p2[0], p1[1] - p2[1])
-        v2 = (p3[0] - p2[0], p3[1] - p2[1])
-        
-        # Produit scalaire et normes
-        dot_product = v1[0] * v2[0] + v1[1] * v2[1]
-        norm1 = np.sqrt(v1[0]**2 + v1[1]**2)
-        norm2 = np.sqrt(v2[0]**2 + v2[1]**2)
-        
-        if norm1 == 0 or norm2 == 0:
+                # Calcul de l'angle
+                norm1 = np.linalg.norm(v1)
+                norm2 = np.linalg.norm(v2)
+                
+                if norm1 > 0 and norm2 > 0:
+                    cos_angle = np.clip(np.dot(v1, v2) / (norm1 * norm2), -1, 1)
+                    angle = np.degrees(np.arccos(cos_angle))
+                    
+                    # Distance entre les points
+                    if i < len(segment_df) - 1:
+                        dist = segment_df['distance'].iloc[i+1] - segment_df['distance'].iloc[i-1]
+                        
+                        if angle > 60 and dist < 50:
+                            sharp_turns += 1
+            
+            return sharp_turns
+        except:
             return 0
-        
-        # Angle en radians puis en degrés
-        cos_angle = dot_product / (norm1 * norm2)
-        cos_angle = np.clip(cos_angle, -1, 1)  # Éviter erreurs d'arrondi
-        angle_rad = np.arccos(cos_angle)
-        angle_deg = np.degrees(angle_rad)
-        
-        return angle_deg
-
+    
     def _fill_gaps(self, df, segments):
-        """
-        Remplit les espaces entre les segments détectés avec:
-        - flat: si pente proche de 0
-        - uphill: si pente positive modérée
-        - downhill: si pente négative modérée
-        """
-        
+        """Remplit les espaces entre segments détectés"""
         if not segments:
-            # Tout le parcours est un seul segment
             avg_grade = df['plot_grade'].mean()
             return [self._create_flat_segment(df, 0, len(df)-1, avg_grade)]
         
         filled = []
-        last_end_dist = 0
+        last_end = 0
         
         for seg in segments:
-            # Remplir l'espace avant ce segment
-            if seg['start_distance'] > last_end_dist + 50:  # Gap de plus de 50m
-                gap_start_idx = df[df['distance'] >= last_end_dist].index[0]
-                gap_end_idx = df[df['distance'] <= seg['start_distance']].index[-1]
+            # Gap avant ce segment
+            if seg['start_distance'] > last_end + 50:
+                gap_start = df[df['distance'] >= last_end].index[0]
+                gap_end = df[df['distance'] <= seg['start_distance']].index[-1]
                 
-                gap_segment = self._create_flat_segment(
-                    df, gap_start_idx, gap_end_idx,
-                    df.loc[gap_start_idx:gap_end_idx, 'plot_grade'].mean()
+                gap_seg = self._create_flat_segment(
+                    df, gap_start, gap_end,
+                    df.loc[gap_start:gap_end, 'plot_grade'].mean()
                 )
                 
-                if gap_segment['distance'] > 50:  # Ignorer les très petits gaps
-                    filled.append(gap_segment)
+                if gap_seg['distance'] > 50:
+                    filled.append(gap_seg)
             
             filled.append(seg)
-            last_end_dist = seg['end_distance']
+            last_end = seg['end_distance']
         
-        # Remplir après le dernier segment
-        if last_end_dist < df['distance'].iloc[-1] - 50:
-            gap_start_idx = df[df['distance'] >= last_end_dist].index[0]
-            gap_end_idx = len(df) - 1
+        # Gap final
+        if last_end < df['distance'].iloc[-1] - 50:
+            gap_start = df[df['distance'] >= last_end].index[0]
+            gap_end = len(df) - 1
             
-            gap_segment = self._create_flat_segment(
-                df, gap_start_idx, gap_end_idx,
-                df.loc[gap_start_idx:gap_end_idx, 'plot_grade'].mean()
+            gap_seg = self._create_flat_segment(
+                df, gap_start, gap_end,
+                df.loc[gap_start:gap_end, 'plot_grade'].mean()
             )
             
-            if gap_segment['distance'] > 50:
-                filled.append(gap_segment)
+            if gap_seg['distance'] > 50:
+                filled.append(gap_seg)
         
         return filled
-
+    
     def _create_flat_segment(self, df, start_idx, end_idx, avg_grade):
-        """Crée un segment flat/uphill/downhill basé sur la pente moyenne"""
+        """Crée un segment flat/uphill/downhill"""
+        segment_df = df.iloc[start_idx:end_idx+1]
         
-        start_dist = df['distance'].iloc[start_idx]
-        end_dist = df['distance'].iloc[end_idx]
+        length = segment_df['distance'].iloc[-1] - segment_df['distance'].iloc[0]
+        elev_change = segment_df['ele'].iloc[-1] - segment_df['ele'].iloc[0]
         
-        start_alt = df['ele'].iloc[start_idx]
-        end_alt = df['ele'].iloc[end_idx]
-        
-        length = end_dist - start_dist
-        elev_change = end_alt - start_alt
-        
-        if avg_grade > 1:
+        # Déterminer le type
+        if avg_grade > 1.5:
             seg_type = "uphill"
-        elif avg_grade < -1:
+        elif avg_grade < -1.5:
             seg_type = "downhill"
         else:
             seg_type = "flat"
         
         return {
-            "type": seg_type,
-            "category": "Uncategorized",
-            "start_distance": start_dist,
-            "end_distance": end_dist,
-            "distance": length,
-            "start_altitude": start_alt,
-            "end_altitude": end_alt,
-            "elevation_gain": max(0, elev_change),
-            "elevation_loss": max(0, -elev_change),
-            "elevation_change": elev_change,
-            "grade": avg_grade,
-            "max_grade": df['plot_grade'].iloc[start_idx:end_idx+1].max(),
-            "min_grade": df['plot_grade'].iloc[start_idx:end_idx+1].min(),
-            "grade_variance": df['plot_grade'].iloc[start_idx:end_idx+1].var(),
-            "start_idx": start_idx,
-            "end_idx": end_idx,
+            'type': seg_type,
+            'category': "Uncategorized",
+            'start_distance': segment_df['distance'].iloc[0],
+            'end_distance': segment_df['distance'].iloc[-1],
+            'distance': length,
+            'start_altitude': segment_df['ele'].iloc[0],
+            'end_altitude': segment_df['ele'].iloc[-1],
+            'elevation_gain': max(0, elev_change),
+            'elevation_loss': max(0, -elev_change),
+            'elevation_change': elev_change,
+            'grade': avg_grade,
+            'max_grade': segment_df['plot_grade'].max(),
+            'min_grade': segment_df['plot_grade'].min(),
+            'grade_variance': segment_df['plot_grade'].var(),
+            'sharp_turns': 0,
+            'start_idx': start_idx,
+            'end_idx': end_idx
         }
