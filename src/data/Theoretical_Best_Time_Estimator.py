@@ -3,9 +3,6 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split, cross_val_score
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -39,7 +36,8 @@ class TheoreticalBestTimeEstimator:
         for index, row in df.iterrows():
             correction = self.correction_function(row[effort_count_column])
             theorical_best_time = row[best_time_column] * correction
-            df_new = pd.concat([df_new, pd.DataFrame({'theoretical_best_time': [theorical_best_time]})], ignore_index=True)
+            df_new = pd.concat([df_new, pd.DataFrame({'theoretical_best_time': [theorical_best_time]})], ignore_index=False)
+            df_new.index.values[-1] = index  # set the index to be the same as the original df
         
 
         return df_new
