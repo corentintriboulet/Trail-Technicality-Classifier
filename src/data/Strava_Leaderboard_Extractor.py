@@ -1,7 +1,8 @@
 """
-Leaderboard_Extractor.py
-Module pour extraire les temps du leaderboard Strava
-Supporte AgentQL (par défaut) et Crawl4AI (fallback)
+Strava Leaderboard Extractor
+
+Extracts leaderboard times from Strava segment pages using web scraping.
+Supports two methods: AgentQL (with Playwright) or Crawl4AI (standalone).
 """
 
 import asyncio
@@ -13,11 +14,11 @@ class LeaderboardExtractor:
     
     def __init__(self, method="agentql", browser=None):
         """
-        Initialize extractor
+        Initialize the extractor
         
         Args:
-            method: "agentql" ou "crawl4ai"
-            browser: Playwright browser instance (pour agentql)
+            method (str): Extraction method - "agentql" or "crawl4ai"
+            browser: Playwright browser instance (required for AgentQL method)
         """
         self.method = method
         self.browser = browser
@@ -27,17 +28,21 @@ class LeaderboardExtractor:
         """
         Convert Strava time string to seconds
         
-        Handles: '24s', '5:24', '1:23:45', '45'
+        Args:
+            time_str (str): Time string from Strava (e.g., '24s', '5:24', '1:23:45')
+        
+        Returns:
+            int: Time in seconds, or None if conversion fails
         """
         try:
             time_str = str(time_str).strip().lower()
             
-            # Format: "24s", "45seconds"
+            # Handle seconds format: "24s", "45seconds"
             if 's' in time_str:
                 digits = ''.join(c for c in time_str if c.isdigit())
                 return int(digits) if digits else None
             
-            # Format: "5:24" ou "1:23:45"
+            # Handle time format: "5:24" (MM:SS) or "1:23:45" (H:MM:SS)
             if ':' in time_str:
                 parts = time_str.split(':')
                 if len(parts) == 2:  # MM:SS
@@ -45,16 +50,25 @@ class LeaderboardExtractor:
                 elif len(parts) == 3:  # H:MM:SS
                     return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
             
-            # Format: juste un nombre
+            # Handle plain number
             if time_str.isdigit():
                 return int(time_str)
             
             return None
+            
         except (ValueError, AttributeError, TypeError):
             return None
     
     async def extract_times_agentql(self, segment_id):
-        """Extract times using AgentQL (requires Playwright browser)"""
+        """
+        Extract times using AgentQL (requires Playwright browser)
+        
+        Args:
+            segment_id (int): Strava segment ID
+        
+        Returns:
+            list: List of times in seconds (top 10)
+        """
         if not self.browser:
             raise ValueError("Browser instance required for AgentQL method")
         
@@ -63,10 +77,12 @@ class LeaderboardExtractor:
         segment_url = f"https://www.strava.com/segments/{segment_id}"
         
         try:
+            # Open page with AgentQL wrapper
             page = await agentql.wrap_async(await self.browser.new_page())
             await page.goto(segment_url)
             await page.wait_for_timeout(1500)
             
+            # Query the leaderboard table
             query = """
             {
               table {
@@ -82,13 +98,14 @@ class LeaderboardExtractor:
             
             rows = leaderboard_data.get("table", {}).get("row", [])
             
-            # Extract and convert times
+            # Extract time strings
             times_str = [
                 row.get("time") 
                 for row in rows 
                 if row.get("time") and str(row.get("time")).strip()
             ]
             
+            # Convert to seconds
             times_seconds = []
             for t in times_str:
                 seconds = self.time_to_seconds(t)
@@ -102,7 +119,15 @@ class LeaderboardExtractor:
             return []
     
     async def extract_times_crawl4ai(self, segment_id):
-        """Extract times using Crawl4AI (standalone)"""
+        """
+        Extract times using Crawl4AI (standalone, no browser required)
+        
+        Args:
+            segment_id (int): Strava segment ID
+        
+        Returns:
+            list: List of times in seconds (top 10)
+        """
         try:
             from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
         except ImportError:
@@ -111,6 +136,7 @@ class LeaderboardExtractor:
         
         segment_url = f"https://www.strava.com/segments/{segment_id}"
         
+        # Configure browser and crawler
         browser_config = BrowserConfig(
             headless=True,
             verbose=False
@@ -126,9 +152,10 @@ class LeaderboardExtractor:
             async with AsyncWebCrawler(config=browser_config) as crawler:
                 result = await crawler.arun(url=segment_url, config=crawler_config)
                 
+                # Parse HTML with BeautifulSoup
                 soup = BeautifulSoup(result.html, 'html.parser')
                 
-                # Find table
+                # Find the leaderboard table
                 table = soup.find('table')
                 if not table:
                     return []
@@ -137,25 +164,26 @@ class LeaderboardExtractor:
                 if not tbody:
                     return []
                 
-                rows = tbody.find_all('tr')[:10]  # Top 10 only
+                # Extract top 10 rows
+                rows = tbody.find_all('tr')[:10]
                 
                 times_seconds = []
                 
                 for row in rows:
                     cells = row.find_all('td')
                     
-                    # Search for time in all cells (flexible approach)
+                    # Search for time cell (flexible approach)
                     time_found = None
                     for cell in cells:
                         text = cell.get_text(strip=True)
-                        # Look for time patterns:
-                        # 1. Contains : (like 5:24 or 1:23:45) but not / (not speed like 5:24/km)
-                        # 2. Ends with 's' and is short (like 44s, 51s)
+                        
+                        # Identify time patterns:
+                        # - Contains ':' but not '/' (e.g., 5:24 but not 5:24/km)
+                        # - Ends with 's' and is short (e.g., 44s)
                         is_colon_time = ':' in text and '/' not in text and len(text) < 10
                         is_seconds_time = text.endswith('s') and len(text) < 6 and text[:-1].replace(':', '').isdigit()
                         
                         if is_colon_time or is_seconds_time:
-                            # Found a time, convert it
                             seconds = self.time_to_seconds(text)
                             if seconds is not None:
                                 time_found = seconds
@@ -175,13 +203,13 @@ class LeaderboardExtractor:
         Get leaderboard times for a segment
         
         Args:
-            segment_id: Strava segment ID
+            segment_id (int): Strava segment ID
         
         Returns:
             tuple: (best_time, average_top_10, tenth_best_time) in seconds
-                   or (None, None, None) if failed
+                   Returns (None, None, None) if extraction fails
         """
-        # Extract times based on method
+        # Extract times using selected method
         if self.method == "agentql":
             times_seconds = await self.extract_times_agentql(segment_id)
         elif self.method == "crawl4ai":
@@ -189,10 +217,11 @@ class LeaderboardExtractor:
         else:
             raise ValueError(f"Unknown method: {self.method}")
         
-        # Calculate metrics
+        # Return None if no times extracted
         if not times_seconds:
             return None, None, None
         
+        # Calculate metrics
         best_time = times_seconds[0]
         top_10 = times_seconds[:10]
         average_top_10 = sum(top_10) / len(top_10)
@@ -201,13 +230,14 @@ class LeaderboardExtractor:
         return best_time, average_top_10, tenth_best
 
 
-# Standalone test function
+# Test function
 async def test_extractor():
-    """Test the extractor"""
+    """Test the extractor with a sample segment"""
     print("Testing LeaderboardExtractor with Crawl4AI...")
     
     extractor = LeaderboardExtractor(method="crawl4ai")
     
+    # Test with a sample segment
     segment_id = 22495117
     best, avg, tenth = await extractor.get_times(segment_id)
     

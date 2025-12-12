@@ -1,16 +1,23 @@
+"""
+Segment Slicer
+
+Analyzes elevation profiles and divides them into meaningful sections:
+- flat: Flat terrain (< 1.5% grade)
+- uphill: Non-categorized climb (1.5-3% grade)
+- climb: Strava-categorized climb (Cat 4 to HC)
+- downhill: Non-categorized descent (-1.5% to -3% grade)
+- descent: Categorized descent (with sharp turn counting)
+
+The algorithm adapts section detection thresholds based on total segment length
+to provide appropriate granularity for both short and long segments.
+"""
+
 import numpy as np
 import pandas as pd
 
 
 class SegmentSlicer:
-    """
-    Découpe un profil d'altitude en 5 types de sections :
-    - flat : plat (< 1.5% de pente)
-    - uphill : montée non catégorisée (1.5-3%)
-    - climb : montée catégorisée Strava (Cat 4 à HC)
-    - downhill : descente non catégorisée (-1.5% à -3%)
-    - descent : descente catégorisée (avec comptage de virages)
-    """
+    """Splits an elevation profile into categorized sections"""
     
     def __init__(self):
         pass
@@ -18,36 +25,55 @@ class SegmentSlicer:
     def cut_segment(self, altitude_profile, distance_profile, coordinates=None, 
                     smooth_window=10):
         """
-        Découpe le profil en sections significatives.
-        Adapte automatiquement la longueur minimale selon la distance totale.
+        Split elevation profile into meaningful sections
+        Automatically adapts minimum section length based on total distance
+        
+        Args:
+            altitude_profile (list): Elevation data in meters
+            distance_profile (list): Distance data in meters
+            coordinates (list): Optional GPS coordinates [[lat, lon], ...]
+            smooth_window (int): Window size for grade smoothing
+        
+        Returns:
+            list: List of section dictionaries with metrics
         """
-        # Créer DataFrame optimisé
+        # Create optimized DataFrame
         df = self._create_dataframe(altitude_profile, distance_profile, coordinates)
         
         if len(df) < 2:
             return []
         
-        # Calcul vectorisé des grades et lissage
+        # Vectorized grade calculation and smoothing
         df = self._compute_grades_and_smooth(df, smooth_window)
         
-        # Adapter les seuils selon la longueur du segment
+        # Adapt thresholds based on segment length
         total_distance = df['distance'].iloc[-1]
         min_length, min_elev = self._get_adaptive_thresholds(total_distance)
         
-        # Détection des montées et descentes
+        # Detect climbs and descents
         climbs = self._detect_slopes(df, 'climb', min_length, min_elev)
         descents = self._detect_slopes(df, 'descent', min_length, min_elev, coordinates)
         
-        # Fusion et tri
+        # Merge and sort sections
         all_segments = climbs + descents
         all_segments.sort(key=lambda x: x['start_distance'])
         
-        # Remplir les trous
+        # Fill gaps between detected sections
         return self._fill_gaps(df, all_segments)
     
     def _create_dataframe(self, altitude_profile, distance_profile, coordinates):
-        """Crée le DataFrame de manière optimisée"""
-        # Gérer les coordonnées (numpy arrays)
+        """
+        Create optimized DataFrame from raw data
+        
+        Args:
+            altitude_profile (list): Elevation data
+            distance_profile (list): Distance data
+            coordinates (list): GPS coordinates or None
+        
+        Returns:
+            DataFrame: Structured data with ele, distance, lat, lon columns
+        """
+        # Handle coordinates (convert to numpy arrays)
         if coordinates is not None:
             try:
                 lat_coords = np.array([float(c[0]) for c in coordinates])
@@ -68,12 +94,18 @@ class SegmentSlicer:
     
     def _get_adaptive_thresholds(self, total_distance):
         """
-        Adapte les seuils de détection selon la longueur totale du segment.
-        Pour les segments < 1km : plus de détails avec des sections plus courtes.
+        Adapt detection thresholds based on total segment length
+        Shorter segments get finer granularity with shorter minimum sections
+        
+        Args:
+            total_distance (float): Total segment distance in meters
+        
+        Returns:
+            tuple: (min_length, min_elevation) thresholds in meters
         """
         if total_distance < 1000:  # < 1km
-            min_length = 50   # Sections de 50m minimum
-            min_elev = 10     # 10m de dénivelé minimum
+            min_length = 50   # 50m minimum section length
+            min_elev = 10     # 10m minimum elevation change
         elif total_distance < 4000:  # < 4km
             min_length = 100
             min_elev = 15
@@ -84,14 +116,23 @@ class SegmentSlicer:
         return min_length, min_elev
     
     def _compute_grades_and_smooth(self, df, window):
-        """Calcul vectorisé des grades et lissage (plus rapide)"""
-        # Calcul vectorisé
+        """
+        Vectorized grade calculation and smoothing (faster than iterative)
+        
+        Args:
+            df (DataFrame): Data with elevation and distance
+            window (int): Smoothing window size
+        
+        Returns:
+            DataFrame: Input DataFrame with added 'grade' and 'plot_grade' columns
+        """
+        # Vectorized calculation
         dist_diff = df['distance'].diff()
         elev_diff = df['ele'].diff()
         
         df['grade'] = np.where(dist_diff > 0, (elev_diff / dist_diff) * 100, 0)
         
-        # Lissage
+        # Smoothing with rolling average
         window_size = min(max(3, window), len(df))
         if window_size % 2 == 0:
             window_size += 1
@@ -104,10 +145,19 @@ class SegmentSlicer:
     
     def _detect_slopes(self, df, direction='climb', min_length=300, min_elev=20, coordinates=None):
         """
-        Détection unifiée des montées et descentes (code simplifié).
-        direction: 'climb' ou 'descent'
+        Unified detection of climbs and descents using state machine
+        
+        Args:
+            df (DataFrame): Data with grades
+            direction (str): 'climb' or 'descent'
+            min_length (float): Minimum section length in meters
+            min_elev (float): Minimum elevation change in meters
+            coordinates (list): GPS coordinates for turn counting (descents only)
+        
+        Returns:
+            list: List of detected slope dictionaries
         """
-        # Configuration selon la direction
+        # Configure based on direction
         if direction == 'climb':
             start_thresh = 3.0
             end_thresh = 1.5
@@ -122,18 +172,21 @@ class SegmentSlicer:
         start_idx = 0
         points = []
         
+        # State machine for slope detection
         for i in range(1, len(df)):
             slope = df.iloc[i]['plot_grade'] * sign
             elev_diff = (df['ele'].iloc[i] - df['ele'].iloc[i-1]) * sign
             dist_diff = df['distance'].iloc[i] - df['distance'].iloc[i-1]
             
             if state == "SEARCHING":
+                # Look for slope start (steep threshold)
                 if slope >= start_thresh * sign:
                     state = "IN_SLOPE"
                     start_idx = i - 1
                     points = [i-1, i]
             
             elif state == "IN_SLOPE":
+                # Continue slope (gentle threshold)
                 if slope >= end_thresh * sign:
                     points.append(i)
                 else:
@@ -144,22 +197,24 @@ class SegmentSlicer:
                     points.append(i)
             
             elif state == "PAUSE":
+                # Check if pause is temporary or end of slope
                 points.append(i)
                 pause_dist += dist_diff
                 if elev_diff < 0:
                     pause_elev += abs(elev_diff)
                 
                 if slope >= end_thresh * sign:
+                    # Resume slope
                     state = "IN_SLOPE"
                 elif pause_dist > 200 or pause_elev > 15:
-                    # Fin de la pente, valider et sauvegarder
+                    # End of slope - validate and save
                     segment_df = df.iloc[points[:-(i - pause_idx)]]
                     self._validate_and_append(slopes, segment_df, direction, 
                                              min_length, min_elev, coordinates)
                     state = "SEARCHING"
                     points = []
         
-        # Dernière pente en cours
+        # Handle final slope in progress
         if state in ["IN_SLOPE", "PAUSE"] and len(points) > 0:
             segment_df = df.iloc[points]
             self._validate_and_append(slopes, segment_df, direction, 
@@ -169,12 +224,23 @@ class SegmentSlicer:
     
     def _validate_and_append(self, slopes_list, segment_df, direction, 
                             min_length, min_elev, coordinates):
-        """Valide et ajoute une montée/descente à la liste"""
+        """
+        Validate section meets thresholds and add to list
+        
+        Args:
+            slopes_list (list): List to append valid sections to
+            segment_df (DataFrame): Section data
+            direction (str): 'climb' or 'descent'
+            min_length (float): Minimum length threshold
+            min_elev (float): Minimum elevation threshold
+            coordinates (list): GPS coordinates for turn counting
+        """
         if segment_df.empty or len(segment_df) < 2:
             return
         
         length = segment_df['distance'].iloc[-1] - segment_df['distance'].iloc[0]
         
+        # Calculate elevation change
         if direction == 'climb':
             elev_change = segment_df[segment_df['ele'].diff() > 0]['ele'].diff().sum()
             if pd.isna(elev_change):
@@ -186,10 +252,11 @@ class SegmentSlicer:
                 elev_change = 0
             avg_slope = -(elev_change / length) * 100 if length > 0 else 0
         
+        # Check if meets minimum thresholds
         if length < min_length or elev_change < min_elev:
             return
         
-        # Classification
+        # Classify section
         if direction == 'climb':
             category = self._classify_strava(length, avg_slope)
             segment_type = "climb" if category != "Uncategorized" else "uphill"
@@ -220,7 +287,17 @@ class SegmentSlicer:
         })
     
     def _classify_strava(self, length_m, avg_slope):
-        """Classification Strava unifiée (montées et descentes)"""
+        """
+        Unified Strava categorization for climbs and descents
+        Based on score = length × average_grade
+        
+        Args:
+            length_m (float): Section length in meters
+            avg_slope (float): Average grade percentage
+        
+        Returns:
+            str: Category ('HC', 'Cat 1', 'Cat 2', 'Cat 3', 'Cat 4', or 'Uncategorized')
+        """
         if avg_slope < 3.0:
             return "Uncategorized"
         
@@ -240,7 +317,16 @@ class SegmentSlicer:
             return "Uncategorized"
     
     def _count_sharp_turns(self, segment_df, coordinates):
-        """Compte les virages serrés (angle > 60° sur < 50m)"""
+        """
+        Count sharp turns in descent (angle > 60° over < 50m)
+        
+        Args:
+            segment_df (DataFrame): Section data
+            coordinates (list): GPS coordinates
+        
+        Returns:
+            int: Number of sharp turns detected
+        """
         if coordinates is None or len(segment_df) < 3:
             return 0
         
@@ -254,14 +340,15 @@ class SegmentSlicer:
             coords = coordinates[start_idx:end_idx+1]
             sharp_turns = 0
             
+            # Check angle between consecutive points
             for i in range(1, len(coords) - 1):
-                # Vecteurs entre 3 points consécutifs
+                # Vectors between 3 consecutive points
                 v1 = np.array([float(coords[i-1][0]) - float(coords[i][0]),
                               float(coords[i-1][1]) - float(coords[i][1])])
                 v2 = np.array([float(coords[i+1][0]) - float(coords[i][0]),
                               float(coords[i+1][1]) - float(coords[i][1])])
                 
-                # Calcul de l'angle
+                # Calculate angle
                 norm1 = np.linalg.norm(v1)
                 norm2 = np.linalg.norm(v2)
                 
@@ -269,10 +356,11 @@ class SegmentSlicer:
                     cos_angle = np.clip(np.dot(v1, v2) / (norm1 * norm2), -1, 1)
                     angle = np.degrees(np.arccos(cos_angle))
                     
-                    # Distance entre les points
+                    # Distance between points
                     if i < len(segment_df) - 1:
                         dist = segment_df['distance'].iloc[i+1] - segment_df['distance'].iloc[i-1]
                         
+                        # Count if sharp turn over short distance
                         if angle > 60 and dist < 50:
                             sharp_turns += 1
             
@@ -281,8 +369,18 @@ class SegmentSlicer:
             return 0
     
     def _fill_gaps(self, df, segments):
-        """Remplit les espaces entre segments détectés"""
+        """
+        Fill gaps between detected sections with flat/uphill/downhill sections
+        
+        Args:
+            df (DataFrame): Full elevation data
+            segments (list): Detected climb/descent sections
+        
+        Returns:
+            list: Complete list of sections with no gaps
+        """
         if not segments:
+            # Entire segment is one flat section
             avg_grade = df['plot_grade'].mean()
             return [self._create_flat_segment(df, 0, len(df)-1, avg_grade)]
         
@@ -290,7 +388,7 @@ class SegmentSlicer:
         last_end = 0
         
         for seg in segments:
-            # Gap avant ce segment
+            # Gap before this section
             if seg['start_distance'] > last_end + 50:
                 gap_start = df[df['distance'] >= last_end].index[0]
                 gap_end = df[df['distance'] <= seg['start_distance']].index[-1]
@@ -306,7 +404,7 @@ class SegmentSlicer:
             filled.append(seg)
             last_end = seg['end_distance']
         
-        # Gap final
+        # Final gap
         if last_end < df['distance'].iloc[-1] - 50:
             gap_start = df[df['distance'] >= last_end].index[0]
             gap_end = len(df) - 1
@@ -322,13 +420,24 @@ class SegmentSlicer:
         return filled
     
     def _create_flat_segment(self, df, start_idx, end_idx, avg_grade):
-        """Crée un segment flat/uphill/downhill"""
+        """
+        Create flat/uphill/downhill section for gaps
+        
+        Args:
+            df (DataFrame): Full elevation data
+            start_idx (int): Start index
+            end_idx (int): End index
+            avg_grade (float): Average grade of this section
+        
+        Returns:
+            dict: Section dictionary
+        """
         segment_df = df.iloc[start_idx:end_idx+1]
         
         length = segment_df['distance'].iloc[-1] - segment_df['distance'].iloc[0]
         elev_change = segment_df['ele'].iloc[-1] - segment_df['ele'].iloc[0]
         
-        # Déterminer le type
+        # Determine type based on average grade
         if avg_grade > 1.5:
             seg_type = "uphill"
         elif avg_grade < -1.5:
