@@ -1,43 +1,56 @@
+"""
+Corrects observed best times based on segment popularity (effort count).
+Segments with fewer efforts have higher sampling bias and need larger corrections.
+Uses exponential decay function: correction = 1 + (2/3) * exp(-efforts/1000)
+"""
+
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.model_selection import train_test_split, cross_val_score
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 class TheoreticalBestTimeEstimator:
-    """
-    Stage 1: Estimates theoretical best time accounting for sampling bias
-    Uses terrain features + effort count to predict true best time
-    """
+    """Estimates theoretical best time correcting for sampling bias"""
     
     def __init__(self):
         self.model = None
     
     def correction_function(self, effort_counts):
         """
-        Correction function to adjust predicted times based on effort counts
+        Calculate correction factor based on effort count
+        
+        Higher effort counts → lower correction (more reliable best time)
+        Lower effort counts → higher correction (sampling bias)
+        
+        Args:
+            effort_counts (float or array): Total number of efforts on segment
+        
+        Returns:
+            float or array: Correction multiplier (>= 1.0)
         """
-        return 1 + 2/3*np.exp(-effort_counts/1000)
+        return 1 + (2/3) * np.exp(-effort_counts / 1000)
         
     def estimated_th_best_time(self, df):
         """
-        Estimate theoretical best time for given features X
+        Estimate theoretical best time for all segments in DataFrame
+        
+        Args:
+            df (DataFrame): Segment data with 'best_time' and 'total_effort_count' columns
+        
+        Returns:
+            DataFrame: Single column DataFrame with 'theoretical_best_time'
         """
         best_time_column = 'best_time'
         effort_count_column = 'total_effort_count'
+        
         df = df.copy()
         
-        # create a new df vertically (1 column x n rows), stacking theorical best times for each segment, n is number of segments in df
-        df_new = pd.DataFrame(columns=['theoretical_best_time'])
+        # Apply correction to each segment
+        corrections = self.correction_function(df[effort_count_column])
+        theoretical_best_times = df[best_time_column] * corrections
         
-        for index, row in df.iterrows():
-            correction = self.correction_function(row[effort_count_column])
-            theorical_best_time = row[best_time_column] * correction
-            df_new = pd.concat([df_new, pd.DataFrame({'theoretical_best_time': [theorical_best_time]})], ignore_index=False)
-            df_new.index.values[-1] = index  # set the index to be the same as the original df
+        # Create result DataFrame with matching index
+        df_new = pd.DataFrame({
+            'theoretical_best_time': theoretical_best_times
+        }, index=df.index)
         
-
         return df_new

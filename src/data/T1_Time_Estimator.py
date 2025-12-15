@@ -3,7 +3,7 @@ from pathlib import Path
 current_script_path = Path(__file__).resolve()
 repo_root = current_script_path.parents[2]
 sys.path.append(str(repo_root))
-print(f"Repo root added to sys.path: {repo_root}")
+print(f"LOG: Repo root added to sys.path: {repo_root}")
 
 import numpy as np
 import pandas as pd
@@ -238,7 +238,7 @@ class T1TimeEstimator():
         
         def extract_features_for_dataframe(df, sections_dict):
             features_list = []
-            valid_indices = []
+            segment_ids = []
             
             for idx, row in df.iterrows():
                 segment_id = row['segment_id']
@@ -254,14 +254,15 @@ class T1TimeEstimator():
                 
                 if features is not None:
                     features_list.append(features)
-                    valid_indices.append(idx)
+                    segment_ids.append(segment_id)
             
-            features_df = pd.DataFrame(features_list, index=valid_indices)
-            print(f"✓ Extracted features for {len(features_df)} / {len(df)} segments")
+            features_df = pd.DataFrame(features_list, index=segment_ids)
+            print(f"LOG: Extracted features for {len(features_df)} / {len(df)} segments")
             
-            return features_df, valid_indices
+            return features_df, segment_ids
         
-
+        features_ride_df, segment_ids = extract_features_for_dataframe(ride_df, sections_dict_ride)
+        return features_ride_df
     
     def cleaning(self, ride_df, sections_dict_ride, features_ride_df):
         # Too fast top 1 rider
@@ -271,108 +272,41 @@ class T1TimeEstimator():
         # Too steep slopes
         mask_too_steep_slope = (features_ride_df['max_grade'] <= 30) & (features_ride_df['min_grade'] >= -30)
         features_ride_df = features_ride_df.loc[mask_too_steep_slope]
-        sections_dict_ride = {k: v for k, v in sections_dict_ride.items() if k in ride_df['segment_id'].values}
+        sections_dict_ride = {k: v for k, v in sections_dict_ride.items() if k in ride_df.index}
         return ride_df, sections_dict_ride, features_ride_df
     
-    def load_medium_confidence_T1_segments(self):
+    def load_medium_confidence_T1_segments(self, df):
         T1_MC_active_learning_ride = pd.read_csv(repo_root / 'data' / 'processed' / 'T1_active_learning_threshold_5_ride.csv')
         T1_road_naming_ride = pd.read_csv(repo_root / 'data' / 'processed' / 'T1_road_naming_ride.csv')
         segments_manually_labeled = pd.read_csv(repo_root / 'data' / 'processed' / 'segments_manually_labeled.csv')
-        T1_segments_manually_labeled_ride = segments_manually_labeled[(segments_manually_labeled['technicality'] == 1) & (segments_manually_labeled['segment_id'].isin(df[df['activity_type'] == 'Ride']['segment_id']))].copy()
-        not_T1_segments_manually_labeled_ride = segments_manually_labeled[(segments_manually_labeled['technicality'] != 1) & (segments_manually_labeled['segment_id'].isin(df[df['activity_type'] == 'Ride']['segment_id']))].copy()
+        T1_segments_manually_labeled_ride = segments_manually_labeled[(segments_manually_labeled['technicality'] == 1) & (segments_manually_labeled['segment_id'].isin(df[df['activity_type'] == 'Ride'].index))].copy()
+        not_T1_segments_manually_labeled_ride = segments_manually_labeled[(segments_manually_labeled['technicality'] != 1) & (segments_manually_labeled['segment_id'].isin(df[df['activity_type'] == 'Ride'].index))].copy()
 
         T1_MC_ride = pd.concat([T1_MC_active_learning_ride, T1_road_naming_ride, T1_segments_manually_labeled_ride]).drop_duplicates().reset_index(drop=True)
         T1_MC_ride = T1_MC_ride.drop(T1_MC_ride[T1_MC_ride['segment_id'].isin(not_T1_segments_manually_labeled_ride['segment_id'])].index).reset_index(drop=True)
-        return T1_MC_ride, segments_manually_labeled
- 
-    
+
+        T1_MC_HE_ride = df[(df['total_effort_count']>5000) & (df.index.isin(T1_MC_ride['segment_id']))].copy()
+        return T1_MC_HE_ride, segments_manually_labeled
         
     def spliting(self, features_ride_df, T1_MC_ride):
         Train_ride, Test_ride = train_test_split(features_ride_df, test_size=0.2, random_state=42)
         Train_ride, Val_ride = train_test_split(Train_ride, test_size=0.25, random_state=42)
-        Train_T1_MC_ride = Train_ride[Train_ride['segment_id'].isin(T1_MC_ride['segment_id'])].copy()
-        Val_T1_MC_ride = Val_ride[Val_ride['segment_id'].isin(T1_MC_ride['segment_id'])].copy()
-        Test_T1_MC_ride = Test_ride[Test_ride['segment_id'].isin(T1_MC_ride['segment_id'])].copy()
+        Train_T1_MC_ride = Train_ride[Train_ride.index.isin(T1_MC_ride.index)].copy()
+        Val_T1_MC_ride = Val_ride[Val_ride.index.isin(T1_MC_ride.index)].copy()
+        Test_T1_MC_ride = Test_ride[Test_ride.index.isin(T1_MC_ride.index)].copy()
         return Train_ride, Val_ride, Test_ride, Train_T1_MC_ride, Val_T1_MC_ride, Test_T1_MC_ride
     
     def pipeline_model(self, Train_T1_MC_ride, ride_df):
-        X_train_ride = Train_T1_MC_ride.drop(columns=['segment_id'])
-        y_train_ride = ride_df.set_index('segment_id').loc[Train_T1_MC_ride['segment_id'], 'best_time']
-    
-        class ModelRouter4(BaseEstimator, RegressorMixin):
-            def __init__(self, pipeline_1, pipeline_2, pipeline_3, pipeline_4,
-                        threshold_1=1.0, threshold_2=2.0, threshold_3=5.0, 
-                        segment_length_col='segment_length',
-                        drop_routing_col=True):  # ← NOUVEAU paramètre
-                self.pipeline_1 = pipeline_1
-                self.pipeline_2 = pipeline_2
-                self.pipeline_3 = pipeline_3
-                self.pipeline_4 = pipeline_4
-                self.threshold_1 = threshold_1
-                self.threshold_2 = threshold_2
-                self.threshold_3 = threshold_3
-                self.segment_length_col = segment_length_col
-                self.drop_routing_col = drop_routing_col  # ← NOUVEAU
+        X_train_ride = Train_T1_MC_ride
+        y_train_ride = ride_df.loc[Train_T1_MC_ride.index, 'best_time']
 
-            def _prepare_features(self, X):
-                """Enlève la colonne de routing des features si demandé"""
-                if self.drop_routing_col and self.segment_length_col in X.columns:
-                    return X.drop(columns=[self.segment_length_col])
-                return X
-
-            def fit(self, X, y):
-                # Calculer les masques AVANT de retirer la colonne
-                self.mask_1 = X[self.segment_length_col] <= self.threshold_1
-                self.mask_2 = (X[self.segment_length_col] > self.threshold_1) & \
-                            (X[self.segment_length_col] <= self.threshold_2)
-                self.mask_3 = (X[self.segment_length_col] > self.threshold_2) & \
-                            (X[self.segment_length_col] <= self.threshold_3)
-                self.mask_4 = X[self.segment_length_col] > self.threshold_3
-
-                # Préparer les features SANS la colonne de routing
-                X_features = self._prepare_features(X)
-
-                # Entraîner chaque pipeline sur son subset
-                if np.any(self.mask_1):
-                    self.pipeline_1.fit(X_features[self.mask_1], y[self.mask_1])
-                if np.any(self.mask_2):
-                    self.pipeline_2.fit(X_features[self.mask_2], y[self.mask_2])
-                if np.any(self.mask_3):
-                    self.pipeline_3.fit(X_features[self.mask_3], y[self.mask_3])
-                if np.any(self.mask_4):
-                    self.pipeline_4.fit(X_features[self.mask_4], y[self.mask_4])
-                
-                return self
-
-            def predict(self, X):
-                # Calculer les masques AVANT de retirer la colonne
-                mask_1 = X[self.segment_length_col] <= self.threshold_1
-                mask_2 = (X[self.segment_length_col] > self.threshold_1) & \
-                        (X[self.segment_length_col] <= self.threshold_2)
-                mask_3 = (X[self.segment_length_col] > self.threshold_2) & \
-                        (X[self.segment_length_col] <= self.threshold_3)
-                mask_4 = X[self.segment_length_col] > self.threshold_3
-
-                # Préparer les features SANS la colonne de routing
-                X_features = self._prepare_features(X)
-
-                y_pred = np.zeros(len(X))
-                if np.any(mask_1):
-                    y_pred[mask_1] = self.pipeline_1.predict(X_features[mask_1])
-                if np.any(mask_2):
-                    y_pred[mask_2] = self.pipeline_2.predict(X_features[mask_2])
-                if np.any(mask_3):
-                    y_pred[mask_3] = self.pipeline_3.predict(X_features[mask_3])
-                if np.any(mask_4):
-                    y_pred[mask_4] = self.pipeline_4.predict(X_features[mask_4])
-                
-                return y_pred
-    
+        features_to_exclude = ['total_distance_km', 'total_elevation_gain', 'total_elevation_loss','min_grade','max_grade', 'hardest_section_position','grade_variance']
+        X_train_for_selection = X_train_ride.select_dtypes(include=[np.number]).drop(columns=features_to_exclude, errors='ignore')
         sfs = SequentialFeatureSelector(LinearRegression(), n_features_to_select='auto', direction='forward', scoring='neg_root_mean_squared_error', tol=0.1)
-        sfs.fit(X_train_ride.select_dtypes(include=[np.number]), y_train_ride)
-        selected_features = X_train_ride.select_dtypes(include=[np.number]).columns[sfs.get_support()]
-        if 'total_distance_km' not in selected_features:
-            selected_features = selected_features.insert(0, 'total_distance_km')
+        sfs.fit(X_train_for_selection, y_train_ride)
+        selected_features_1011 = X_train_for_selection.columns[sfs.get_support()].tolist()
+        if 'total_distance_km' not in selected_features_1011:
+            selected_features_1011.insert(0, 'total_distance_km')
         
         pipeline_1 = Pipeline([
             ('scaler', StandardScaler()),
@@ -394,38 +328,108 @@ class T1TimeEstimator():
 
         model_router = ModelRouter4(pipeline_1, pipeline_2, pipeline_3, pipeline_4, threshold_1=1.0, threshold_2=2.0,threshold_3=4.0, segment_length_col='total_distance_km', drop_routing_col=True)
         model_router.fit(X_train_ride, y_train_ride)
-        return model_router, selected_features
+        return model_router
 
     def save_model(self, model, file_path):
         with open(file_path, 'wb') as f:
             pickle.dump(model, f)
-        print(f"Model saved to {file_path}")
+        print(f"LOG: Model saved to {file_path}")
             
     def load_model(self, file_path):
         with open(file_path, 'rb') as f:
             model = pickle.load(f)
-        print(f"Model loaded from {file_path}")
+        print(f"LOG: Model loaded from {file_path}")
         return model
     
     def predict(self, features_df):
-        model = self.load_model(repo_root / 'src' / 'models' / 'T1_time_estimator_model.pkl')
+        model = self.load_model(repo_root / 'src' / 'models' / 'T1_time_estimator_ride_model.pkl')
         X = features_df.drop(columns=['segment_id'])
         y_pred = model.predict(X)
         return y_pred
     
-
-
     def main(self, file_path):
         ride_df, sections_dict_ride = self.load_segment(file_path)
-        features_ride_df = self.extract_features(ride_df, sections_dict_ride)
+        features_ride_df = self.extract_features(ride_df, sections_dict_ride)  # ← AVANT set_index
+        ride_df = ride_df.set_index('segment_id')  # ← APRÈS extract_features
         ride_df, sections_dict_ride, features_ride_df = self.cleaning(ride_df, sections_dict_ride, features_ride_df)
-        T1_MC_ride, segments_manually_labeled = self.load_medium_confidence_T1_segments()
+        print(f"LOG: Cleaning done")
+        T1_MC_ride, segments_manually_labeled = self.load_medium_confidence_T1_segments(ride_df)
+        print(f"LOG: Loaded medium confidence T1 segments")
         Train_ride, Val_ride, Test_ride, Train_T1_MC_ride, Val_T1_MC_ride, Test_T1_MC_ride = self.spliting(features_ride_df, T1_MC_ride)
-        model, selected_features = self.pipeline_model(Train_T1_MC_ride, ride_df)
-        self.save_model(model, repo_root / 'src' / 'models' / 'T1_time_estimator_model.pkl')
-        
+        model = self.pipeline_model(Train_T1_MC_ride, ride_df)
+        self.save_model(model, repo_root / 'src' / 'models' / 'T1_time_estimator_ride_model.pkl')
         
         return None
+    
+class ModelRouter4(BaseEstimator, RegressorMixin):
+    def __init__(self, pipeline_1, pipeline_2, pipeline_3, pipeline_4,
+                threshold_1=1.0, threshold_2=2.0, threshold_3=5.0, 
+                segment_length_col='segment_length',
+                drop_routing_col=True):  # ← NOUVEAU paramètre
+        self.pipeline_1 = pipeline_1
+        self.pipeline_2 = pipeline_2
+        self.pipeline_3 = pipeline_3
+        self.pipeline_4 = pipeline_4
+        self.threshold_1 = threshold_1
+        self.threshold_2 = threshold_2
+        self.threshold_3 = threshold_3
+        self.segment_length_col = segment_length_col
+        self.drop_routing_col = drop_routing_col  # ← NOUVEAU
+
+    def _prepare_features(self, X):
+        """Enlève la colonne de routing des features si demandé"""
+        if self.drop_routing_col and self.segment_length_col in X.columns:
+            return X.drop(columns=[self.segment_length_col])
+        return X
+
+    def fit(self, X, y):
+        # Calculer les masques AVANT de retirer la colonne
+        self.mask_1 = X[self.segment_length_col] <= self.threshold_1
+        self.mask_2 = (X[self.segment_length_col] > self.threshold_1) & \
+                    (X[self.segment_length_col] <= self.threshold_2)
+        self.mask_3 = (X[self.segment_length_col] > self.threshold_2) & \
+                    (X[self.segment_length_col] <= self.threshold_3)
+        self.mask_4 = X[self.segment_length_col] > self.threshold_3
+
+        # Préparer les features SANS la colonne de routing
+        X_features = self._prepare_features(X)
+
+        # Entraîner chaque pipeline sur son subset
+        if np.any(self.mask_1):
+            self.pipeline_1.fit(X_features[self.mask_1], y[self.mask_1])
+        if np.any(self.mask_2):
+            self.pipeline_2.fit(X_features[self.mask_2], y[self.mask_2])
+        if np.any(self.mask_3):
+            self.pipeline_3.fit(X_features[self.mask_3], y[self.mask_3])
+        if np.any(self.mask_4):
+            self.pipeline_4.fit(X_features[self.mask_4], y[self.mask_4])
+        
+        return self
+
+    def predict(self, X):
+        # Calculer les masques AVANT de retirer la colonne
+        mask_1 = X[self.segment_length_col] <= self.threshold_1
+        mask_2 = (X[self.segment_length_col] > self.threshold_1) & \
+                (X[self.segment_length_col] <= self.threshold_2)
+        mask_3 = (X[self.segment_length_col] > self.threshold_2) & \
+                (X[self.segment_length_col] <= self.threshold_3)
+        mask_4 = X[self.segment_length_col] > self.threshold_3
+
+        # Préparer les features SANS la colonne de routing
+        X_features = self._prepare_features(X)
+
+        y_pred = np.zeros(len(X))
+        if np.any(mask_1):
+            y_pred[mask_1] = self.pipeline_1.predict(X_features[mask_1])
+        if np.any(mask_2):
+            y_pred[mask_2] = self.pipeline_2.predict(X_features[mask_2])
+        if np.any(mask_3):
+            y_pred[mask_3] = self.pipeline_3.predict(X_features[mask_3])
+        if np.any(mask_4):
+            y_pred[mask_4] = self.pipeline_4.predict(X_features[mask_4])
+        
+        return y_pred
+
 if __name__ == "__main__":
     file_path = repo_root / 'data' / 'processed' / 'reunion_segments_cleaned.parquet'
     T1_estimator = T1TimeEstimator()

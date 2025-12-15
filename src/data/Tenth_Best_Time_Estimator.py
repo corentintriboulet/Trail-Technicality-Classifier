@@ -1,43 +1,67 @@
-import pandas as pd
-import numpy as np
+"""
+Tenth_Best_Time_Estimator.py
+
+Predicts 10th place time on segment leaderboards using ML model
+
+Uses features: average_top_10_time, best_time, log(effort_count), log(athlete_count)
+Model is pre-trained and loaded from pickle file.
+"""
+
 import joblib
 
-class TenthBestTimeEstimator: 
-    def __init__(self, model_path): 
-        self.model = joblib.load(model_path) 
 
-    def add_tenth_best_time(self, X): 
+class TenthBestTimeEstimator:
+    """Predicts 10th best time using pre-trained model"""
+    
+    def __init__(self, model_path):
         """
-        Predict the tenth best time for given segments and return a DataFrame.
-        Ensures the return is a proper DataFrame, not a NumPy array.
+        Initialize estimator with pre-trained model
+        
+        Args:
+            model_path (str or Path): Path to saved model pickle file
         """
-        # Ensure input is a DataFrame
+        self.model = joblib.load(model_path)
+
+    def add_tenth_best_time(self, X):
+        """
+        Predict tenth best time and add to DataFrame
+        
+        Args:
+            X (DataFrame): Segment data with required columns:
+                - average_top_10_time
+                - best_time
+                - total_effort_count
+                - total_athlete_count
+        
+        Returns:
+            DataFrame: Input DataFrame with added 'tenth_best_time' column
+        
+        Raises:
+            TypeError: If input is not a pandas DataFrame
+        """
+        # Validate input type
         if not isinstance(X, pd.DataFrame):
             raise TypeError("Input X must be a pandas DataFrame")
         
-        # Store original index and columns
-        original_index = X.index
-        original_columns = X.columns.tolist()
-        
-        # Make a proper deep copy
+        # Deep copy to avoid modifying original
         X_copy = X.copy(deep=True)
 
-        # Compute features expected by the model
+        # Compute log-transformed features
         X_copy['log_efforts'] = np.log(X_copy['total_effort_count'] + 1)
         X_copy['log_athletes'] = np.log(X_copy['total_athlete_count'] + 1)
 
-        # Columns the model expects
+        # Select features expected by model
         model_features = ['average_top_10_time', 'best_time', 'log_efforts', 'log_athletes']
         X_model = X_copy[model_features]
 
-        # Predict (NumPy array)
+        # Generate predictions
         predictions = self.model.predict(X_model)
         
-        # Ensure predictions is 1D
+        # Ensure 1D array
         if len(predictions.shape) > 1:
             predictions = predictions.flatten()
 
-        # Add predictions to the DataFrame
+        # Add predictions to DataFrame
         X_copy['tenth_best_time'] = predictions
         
         # Verification
