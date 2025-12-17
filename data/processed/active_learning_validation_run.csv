@@ -1,0 +1,51 @@
+segment_id,name,T1_confidence_score,is_T1_predicted,is_T1_manual
+21693632,rp macdo vers rp danseuses,5.375,False,False
+20704030,Avenue du stade,5.875,False,True
+10971236,Orangers -> Lataniers (int.),4.5,False,False
+2157921,Route Du Volcan Climb,5.5,False,False
+23795191,montée parc a cabris,4.875,False,True
+19298945,2000M sur piste stade Jean Allane,5.0,False,True
+27184201,Montée rue Commandant Mahé,4.5,False,True
+5557437,Chemin De La Croix De Jubile Climb,5.5,False,True
+6050801,Route nationale N°5 Climb,5.25,False,True
+27076538,Chemin Touzet niveau citerne - Croisement Chemin La Caisse,5.125,False,True
+23316725,km4-grd-figuier,4.5,False,False
+19470910,la crique vers parking quai est,6.0,False,False
+25797372,piton des goyaves - terrain fleury,5.249999999999999,False,True
+6188592,Route Forestière 13 du Haut Mafate Climb,4.5,False,False
+27282272,Grand Tour du Parc des Palmiers,5.0,False,False
+28627613,Montée chemin Orré Fanfan (jusqu'à chemin Baguette),5.875,False,True
+2623733,Route Forestière 22 De Duvernay Climb,4.5,False,False
+23369653,Start rue des Caramboles,4.5,False,True
+2862903,Route Forestière 11 Des Makes Climb,4.5,False,False
+19642287,DH FOYER BARBOT,5.874999999999999,False,True
+20110631,mcdo condé - ligne des 400,5.125,False,True
+22335847,duathlon par équipe 2019,5.0,False,False
+17189360,Léproserie à pharma ruisseau blanc,6.0,False,True
+18583053,Course nature 2018,5.375,False,False
+32280407,Trail des Laves - Monté depuis place des Laves,5.249999999999999,False,False
+20346972,sprint lafarge,4.625,False,True
+23447234,chemin marcel hoarau ,6.25,False,False
+22838902,aire piknik - barriere Tak,4.75,False,True
+23625778,Ch Tamarins 3Bass DH,5.5,False,True
+32990464,Descente chemin Terrain Galet (pied de mangue à chapelle),5.75,False,True
+22028755,Plage de la Saline vers Ermitage par la route,8.75,True,True
+27902889,Riviere D3 - D20,8.0,True,True
+10478875,Descente Rue Haute,8.375,True,True
+4591562,Route des Tamarins Climb,8.0,True,True
+28299879,route de bel air - croisée charrié,8.875,True,True
+25946069,Le Souffleur -> Pointe au Sel,8.25,True,True
+27291906,Entre 2 ronds point Route de l'Eperon,9.5,True,True
+26879435,Rte Ermitage,9.25,True,True
+37302741,Rond-point ZI des sables vers D11,8.5,True,True
+16457376,Relais 8 Marathon Saint Benoit,8.25,True,True
+36020709,Piton des Neiges par Sentier N-O,1.5,False,False
+26584070,Sentier Mollaret - Gd Bassin - Bois Court,2.0,False,False
+4742800,Chemin Doret Climb,2.0,False,False
+4742820,Chemin des Goyaviers Climb,1.5,False,False
+17381856,sentier derriere chapelle,2.0,False,False
+16461970,montée chemin du bras de Saint Paul,1.5,False,False
+23695319,Montée chemin cheval à vx bv,2.0,False,False
+28272061,Montée Forêt du rond,2.0,False,True
+32488322,Chemin béton vers savane,1.5000000000000002,False,False
+34244817,Montée Chemin AB Louvins,2.0,False,True
