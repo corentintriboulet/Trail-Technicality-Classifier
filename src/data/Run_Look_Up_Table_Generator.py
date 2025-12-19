@@ -63,7 +63,7 @@ class RunLookUpTableGenerator:
             fraction de VO2max (0-1)
         """
 
-        return 0.8 + 0.18 * np.exp(-0.014*duration_s)
+        return 0.8 + 0.18 * np.exp(-duration_s/5000)
 
 
     # ============================================================================
@@ -146,15 +146,15 @@ class RunLookUpTableGenerator:
             
             # Vitesse ajustée selon le coût énergétique
             # Principe : si coût augmente, vitesse diminue
-            v_adjusted = v_base * np.sqrt(cost_flat / cost_grade)
+            v_adjusted = v_base * cost_flat / cost_grade
             
             # Vérifier si on dépasse VO2max
-            # VO2 requis (ml/kg/min) = cost (J/kg/m) * velocity (m/s) * 60 / 4.184
-            vo2_required = (cost_grade * v_adjusted * 60) / 4.184  # conversion approximative
+            # Divisé par 20.9 J/ml O2 = VO2 (ml/kg/min)
+            vo2_required = (cost_grade * v_adjusted * 60) / 20.9  # conversion approximative
             
             if vo2_required > vo2_available:
                 # Limiter la vitesse pour rester sous VO2max
-                v_adjusted = (vo2_available * 4.184) / (cost_grade * 60)
+                v_adjusted = (vo2_available * 20.9) / (cost_grade * 60)
             
             # Limite marche en montée raide
             if grade > 15 and v_adjusted < 1.5:
@@ -181,7 +181,7 @@ class RunLookUpTableGenerator:
 
 
     # ============================================================================
-    # CONSTRUCTION DE LA LOOKUP TABLE 3D
+    # CONSTRUCTION DE LA LOOKUP TABLE 4D
     # ============================================================================
 
     def build_lookup_table_3d(
@@ -232,14 +232,14 @@ class RunLookUpTableGenerator:
         )
         
         if verbose:
-            print(f"Building 3D lookup table for TRAIL RUNNING...")
+            print(f"Building 4D lookup table for TRAIL RUNNING...")
             print(f"  Segment distances: {len(segment_distances)} points ({segment_distance_range[0]}-{segment_distance_range[1]} km)")
             print(f"  Section distances: {len(section_distances)} points ({section_distance_range[0]}-{section_distance_range[1]} km)")
             print(f"  Section grades: {len(section_grades)} points ({section_grade_range[0]}-{section_grade_range[1]} %)")
             print(f"  Total size: {len(segment_distances) * len(section_distances) * len(section_grades):,} entries")
-            print(f"  Memory estimate: ~{len(segment_distances) * len(section_distances) * len(section_grades) * 8 / 1e6:.1f} MB")
+            print(f"  Memory estimate: ~{len(segment_distances) *  len(section_distances) * len(section_grades) * 8 / 1e6:.1f} MB")
         
-        # Initialiser la table 3D
+        # Initialiser la table 4D
         lookup_table = np.zeros((len(segment_distances), len(section_distances), len(section_grades)))
         
         # Pré-calculer les modèles de vitesse pour chaque distance de segment
@@ -264,7 +264,6 @@ class RunLookUpTableGenerator:
                 print(f"    Progress: {i}/{total_iterations} ({i/total_iterations*100:.1f}%)")
             
             velocity_model = velocity_models[seg_dist]
-            
             for j, sect_dist in enumerate(section_distances):
                 for k, grade in enumerate(section_grades):
                     # Calculer la vitesse pour ce grade
@@ -281,7 +280,7 @@ class RunLookUpTableGenerator:
         
         # Créer l'interpolateur 3D
         interpolator = RegularGridInterpolator(
-            (segment_distances, section_distances, section_grades),
+            (segment_distances,  section_distances, section_grades),
             lookup_table,
             method='linear',
             bounds_error=False,
@@ -355,7 +354,7 @@ class RunLookUpTableGenerator:
             sect_dist_km = section['distance'] / 1000
             grade = section['grade']
             
-            # Lookup dans la table 3D
+            # Lookup dans la table 4D
             time_seconds = interpolator([segment_distance_km, sect_dist_km, grade])[0]
             
             total_time += time_seconds
@@ -368,11 +367,11 @@ if __name__ == "__main__":
     print("="*70 + "\n")
     generator = RunLookUpTableGenerator()
     lookup_dict = generator.build_lookup_table_3d(
-        section_distance_range=(0.05, 10.0),
+        section_distance_range=(0.05, 5.0),
         section_distance_step=0.05,
-        section_grade_range=(-10, 20),
+        section_grade_range=(-30, 30),
         section_grade_step=0.5,
-        segment_distance_range=(0.5, 100),
+        segment_distance_range=(0.5, 50),
         segment_distance_step=0.5,
         verbose=True
     )

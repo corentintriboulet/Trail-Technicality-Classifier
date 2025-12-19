@@ -24,7 +24,7 @@ from scipy.optimize import fsolve
 from scipy.interpolate import interp1d
 import pickle
 
-class RideT1TimeEstimator():
+class runT1TimeEstimator():
     """
     Stage 2: Estimates T1 time using terrain features
     Uses terrain features to predict T1 time
@@ -34,50 +34,50 @@ class RideT1TimeEstimator():
         return None
     
 
-    def spliting(self, features_ride_df, T1_MC_ride):
-        Train_ride, Test_ride = train_test_split(features_ride_df, test_size=0.2, random_state=42)
-        Train_ride, Val_ride = train_test_split(Train_ride, test_size=0.25, random_state=42)
-        Train_T1_MC_ride = Train_ride[Train_ride.index.isin(T1_MC_ride.index)].copy()
-        Val_T1_MC_ride = Val_ride[Val_ride.index.isin(T1_MC_ride.index)].copy()
-        Test_T1_MC_ride = Test_ride[Test_ride.index.isin(T1_MC_ride.index)].copy()
-        return Train_ride, Val_ride, Test_ride, Train_T1_MC_ride, Val_T1_MC_ride, Test_T1_MC_ride
+    def spliting(self, features_run_df, T1_MC_run):
+        Train_run, Test_run = train_test_split(features_run_df, test_size=0.2, random_state=42)
+        Train_run, Val_run = train_test_split(Train_run, test_size=0.25, random_state=42)
+        Train_T1_MC_run = Train_run[Train_run.index.isin(T1_MC_run.index)].copy()
+        Val_T1_MC_run = Val_run[Val_run.index.isin(T1_MC_run.index)].copy()
+        Test_T1_MC_run = Test_run[Test_run.index.isin(T1_MC_run.index)].copy()
+        return Train_run, Val_run, Test_run, Train_T1_MC_run, Val_T1_MC_run, Test_T1_MC_run
     
     def high_effort_filter(self, df, threshold=5000):
         df_high_effort = df[df['total_efforts_count'] >= threshold].copy()
         return df_high_effort
 
-    def pipeline_model(self, Train_T1_MC_ride, ride_df):
-        X_train_ride = Train_T1_MC_ride
-        y_train_ride = ride_df.loc[Train_T1_MC_ride.index, 'best_time']
+    def pipeline_model(self, Train_T1_MC_run, run_df):
+        X_train_run = Train_T1_MC_run
+        y_train_run = run_df.loc[Train_T1_MC_run.index, 'best_time']
 
         features_to_exclude = ['total_distance_km', 'total_elevation_gain', 'total_elevation_loss','min_grade','max_grade', 'hardest_section_position','grade_variance']
-        X_train_for_selection = X_train_ride.select_dtypes(include=[np.number]).drop(columns=features_to_exclude, errors='ignore')
+        X_train_for_selection = X_train_run.select_dtypes(include=[np.number]).drop(columns=features_to_exclude, errors='ignore')
         sfs = SequentialFeatureSelector(LinearRegression(), n_features_to_select='auto', direction='forward', scoring='neg_root_mean_squared_error', tol=0.1)
-        sfs.fit(X_train_for_selection, y_train_ride)
+        sfs.fit(X_train_for_selection, y_train_run)
         selected_features = X_train_for_selection.columns[sfs.get_support()].tolist()
         if 'total_distance_km' not in selected_features:
             selected_features.insert(0, 'total_distance_km')
         
         pipeline_1 = Pipeline([
             ('scaler', StandardScaler()),
-            ('model', RidgeCV(cv=5))
+            ('model', RidgeCV(cv=2))
             ])  
 
         pipeline_2 = Pipeline([
             ('scaler', StandardScaler()),
-            ('model', RidgeCV(cv=5))
+            ('model', RidgeCV(cv=2))
             ])
         pipeline_3 = Pipeline([
             ('scaler', StandardScaler()),
-            ('model', RidgeCV(cv=5))
+            ('model', RidgeCV(cv=2))
             ])  
         pipeline_4 = Pipeline([
             ('scaler', StandardScaler()),
-            ('model', RidgeCV(cv=5))
+            ('model', RidgeCV(cv=2))
             ])  
 
         model_router = ModelRouter4(pipeline_1, pipeline_2, pipeline_3, pipeline_4, threshold_1=1.0, threshold_2=2.0,threshold_3=4.0, segment_length_col='total_distance_km', drop_routing_col=True)
-        model_router.fit(X_train_ride, y_train_ride)
+        model_router.fit(X_train_run, y_train_run)
         return model_router
 
     def save_model(self, model, file_path):
@@ -155,36 +155,36 @@ class RideT1TimeEstimator():
         return None
     
     def predict(self, features_df):
-        model = self.load_model(repo_root / 'src' / 'models' / 'T1_time_estimator_ride_model.pkl')
+        model = self.load_model(repo_root / 'src' / 'models' / 'T1_time_estimator_run_model.pkl')
         X = features_df.drop(columns=['segment_id'])
         y_pred = model.predict(X)
         return y_pred
     
-    def get_predictions(self, T1_MC_ride, features_ride_df):
-        model_path = repo_root / 'src' / 'models' / 'T1_time_estimator_ride_model.pkl'
+    def get_predictions(self, T1_MC_run, features_run_df):
+        model_path = repo_root / 'src' / 'models' / 'T1_time_estimator_run_model.pkl'
         if os.path.exists(model_path):
-            print("LOG: Loading existing T1 time estimator model for Ride...")
+            print("LOG: Loading existing T1 time estimator model for run...")
             model = self.load_model(model_path)
             
             
         else:
-            print("LOG: Training new T1 time estimator model for Ride...")
-            Train_ride, Val_ride, Test_ride, Train_T1_MC_ride, Val_T1_MC_ride, Test_T1_MC_ride = self.spliting(features_ride_df, T1_MC_ride)
-            Train_T1_MC_ride = self.high_effort_filter(Train_T1_MC_ride, threshold=5000)
-            model = self.pipeline_model(Train_T1_MC_ride, features_ride_df)
+            print("LOG: Training new T1 time estimator model for run...")
+            Train_run, Val_run, Test_run, Train_T1_MC_run, Val_T1_MC_run, Test_T1_MC_run = self.spliting(features_run_df, T1_MC_run)
+            Train_T1_MC_run = self.high_effort_filter(Train_T1_MC_run, threshold=5000)
+            model = self.pipeline_model(Train_T1_MC_run, features_run_df)
             self.save_model(model, model_path)
             self.plotting_MAE_bins(
-                y_train=features_ride_df.loc[Train_T1_MC_ride.index, 'best_time'],
-                y_train_pred=model.predict(Train_T1_MC_ride),
-                y_val=features_ride_df.loc[Val_T1_MC_ride.index, 'best_time'],
-                y_val_pred=model.predict(Val_T1_MC_ride),
-                y_test=features_ride_df.loc[Test_T1_MC_ride.index, 'best_time'],
-                y_test_pred=model.predict(Test_T1_MC_ride)
+                y_train=features_run_df.loc[Train_T1_MC_run.index, 'best_time'],
+                y_train_pred=model.predict(Train_T1_MC_run),
+                y_val=features_run_df.loc[Val_T1_MC_run.index, 'best_time'],
+                y_val_pred=model.predict(Val_T1_MC_run),
+                y_test=features_run_df.loc[Test_T1_MC_run.index, 'best_time'],
+                y_test_pred=model.predict(Test_T1_MC_run)
             )
         
         # Make predictions on a COPY to avoid modifying the original
-        result_df = features_ride_df.copy()
-        y_all_pred = model.predict(features_ride_df)  # Use original for prediction
+        result_df = features_run_df.copy()
+        y_all_pred = model.predict(features_run_df)  # Use original for prediction
         result_df['predicted_T1_time'] = y_all_pred  # Add to copy
         return result_df
     
