@@ -37,3 +37,4 @@ Trail-Technicality-Classifier/
 ### Setup 
 1. Add Strava API keys to config.yaml (see .gitignore).
 2. Install `requirements.txt`
+
