@@ -194,6 +194,7 @@ class FeaturesExtractor:
         uphill_distance = sum(s['distance'] for s in sections if s['type'] == 'uphill') / 1000
         downhill_distance = sum(s['distance'] for s in sections if s['type'] == 'downhill') / 1000
         flat_distance = sum(s['distance'] for s in sections if s['type'] == 'flat') / 1000
+        descent_distance = sum(s['distance'] for s in sections if s['type'] == 'descent') / 1000
         
         # ========== Physics-Based Time Score ==========
         # Load activity-specific lookup table
@@ -241,6 +242,7 @@ class FeaturesExtractor:
             'uphill_distance_km': uphill_distance,
             'downhill_distance_km': downhill_distance,
             'flat_distance_km': flat_distance,
+            'descent_distance_km': descent_distance,
             
             # Interaction features (polynomial)
             'flat_cat_4_interaction': flat_distance * cat_4_distance,

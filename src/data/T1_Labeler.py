@@ -260,7 +260,7 @@ class T1Labeler:
         
         return pd.Series(scores, index=df.index)
 
-    def augment_run_t1_from_rides(self, df_run, df_ride_t1, tolerance_meters=10, coverage_threshold=0.95):
+    def augment_run_t1_from_rides(self, df_run, df_ride_t1, tolerance_meters=50, coverage_threshold=0.75):
         """
         Transfère les labels T1 des segments Vélo vers les segments Course à pied
         Utilise directement les coordonnées GPS avec correction de latitude
@@ -465,7 +465,7 @@ class T1Labeler:
                 df_run_all, 
                 df_ride_geometry,
                 tolerance_meters=50,
-                coverage_threshold=0.95
+                coverage_threshold=0.75
             )
 
             # 4. Return only the matches
