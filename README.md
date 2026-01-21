@@ -12,12 +12,11 @@
 
 | Score | Surface Type       | Description                     |
 |-------|--------------------|---------------------------------|
-| 1     | Road/Paved         | Smooth, no obstacles.           |
-| 2     | Gravel/Compact Dirt| Minor bumps, easy to navigate.  |
-| 3     | Mixed Terrain      | Some rocks/roots, moderate.     |
-| 4     | Technical Singletrack | Frequent obstacles, skill needed. |
-| 5     | Extreme/Unrideable | Heavy rocks/roots, expert only. |
-
+| 1     | Road               | Smooth asphalt                  |
+| 2     | Gravel             | Compact dirt                    |
+| 3     | Mixed Terrain      | Roots & rocks                   |
+| 4     | Technical          | Hard to navigate                |
+| 5     | Extreme            | Unrideable sections             |
 ---
 
 ### Repository Structure
@@ -31,6 +30,8 @@ Trail-Technicality-Classifier/
 ├── notebooks/              # First explorations
 └── src/
     ├── data/               # Data loading scripts
+    ├── debug/              # Debugging scripts
+    ├── lookup_tables/      # Lookup tables
     └── models/             # ML code
 ````
 
@@ -38,3 +39,5 @@ Trail-Technicality-Classifier/
 1. Add Strava API keys to config.yaml (see .gitignore).
 2. Install `requirements.txt`
 
+### Model Pipeline Diagram
+![Model Pipeline](STRAVA.png)
